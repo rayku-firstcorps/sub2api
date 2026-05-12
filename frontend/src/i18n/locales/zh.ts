@@ -4420,6 +4420,13 @@ export default {
       ipAddress: 'IP',
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
+      requestContext: '请求上下文',
+      viewRequestContext: '查看请求上下文',
+      requestContextTruncated: '已裁剪',
+      messageCount: '消息数',
+      latestUserPrompt: '刚输入的 Prompt',
+      fullRequestContext: '完整请求上下文',
+      requestContextCopied: '请求上下文已复制',
       cleanup: {
         button: '清理',
         title: '清理使用记录',

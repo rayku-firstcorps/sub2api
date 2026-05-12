@@ -122,6 +122,11 @@ type UsageLog struct {
 	InboundEndpoint *string
 	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
 	UpstreamEndpoint *string
+	// RequestContextJSON stores a sanitized and size-bounded snapshot of the
+	// client request body so admins can inspect ChatGPT/OpenAI conversation context.
+	RequestContextJSON      *string
+	RequestContextTruncated bool
+	RequestContextBytes     *int
 
 	GroupID        *int64
 	SubscriptionID *int64

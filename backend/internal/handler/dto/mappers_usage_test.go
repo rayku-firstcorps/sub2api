@@ -148,6 +148,34 @@ func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *
 	require.Equal(t, "claude-3", adminDTO.Model)
 }
 
+func TestUsageLogFromServiceAdmin_IncludesRequestContextAdminOnly(t *testing.T) {
+	t.Parallel()
+
+	requestContext := `{"model":"gpt-5.1","api_key":"[REDACTED]","messages":[{"role":"user","content":"hello"}]}`
+	requestContextBytes := 2048
+	log := &service.UsageLog{
+		RequestID:               "req_context",
+		Model:                   "gpt-5.1",
+		RequestContextJSON:      &requestContext,
+		RequestContextTruncated: true,
+		RequestContextBytes:     &requestContextBytes,
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	userJSON, err := json.Marshal(userDTO)
+	require.NoError(t, err)
+	require.NotContains(t, string(userJSON), "request_context")
+
+	require.True(t, adminDTO.RequestContextTruncated)
+	require.Equal(t, requestContextBytes, *adminDTO.RequestContextBytes)
+	ctxMap, ok := adminDTO.RequestContextJSON.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "gpt-5.1", ctxMap["model"])
+	require.Equal(t, "[REDACTED]", ctxMap["api_key"])
+}
+
 func f64Ptr(value float64) *float64 {
 	return &value
 }

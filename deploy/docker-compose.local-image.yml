@@ -1,0 +1,13 @@
+# Compose override for running a locally built Sub2API image.
+#
+# Build first from the repository root:
+#   ./deploy/build_image.sh
+#
+# Then start with:
+#   cd deploy
+#   docker compose -f docker-compose.local.yml -f docker-compose.local-image.yml up -d
+
+services:
+  sub2api:
+    image: sub2api:latest
+    pull_policy: never

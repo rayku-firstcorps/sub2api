@@ -698,6 +698,59 @@ func (_u *UsageLogUpdate) ClearIPAddress() *UsageLogUpdate {
 	return _u
 }
 
+// SetRequestContextJSON sets the "request_context_json" field.
+func (_u *UsageLogUpdate) SetRequestContextJSON(v map[string]interface{}) *UsageLogUpdate {
+	_u.mutation.SetRequestContextJSON(v)
+	return _u
+}
+
+// ClearRequestContextJSON clears the value of the "request_context_json" field.
+func (_u *UsageLogUpdate) ClearRequestContextJSON() *UsageLogUpdate {
+	_u.mutation.ClearRequestContextJSON()
+	return _u
+}
+
+// SetRequestContextTruncated sets the "request_context_truncated" field.
+func (_u *UsageLogUpdate) SetRequestContextTruncated(v bool) *UsageLogUpdate {
+	_u.mutation.SetRequestContextTruncated(v)
+	return _u
+}
+
+// SetNillableRequestContextTruncated sets the "request_context_truncated" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRequestContextTruncated(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRequestContextTruncated(*v)
+	}
+	return _u
+}
+
+// SetRequestContextBytes sets the "request_context_bytes" field.
+func (_u *UsageLogUpdate) SetRequestContextBytes(v int) *UsageLogUpdate {
+	_u.mutation.ResetRequestContextBytes()
+	_u.mutation.SetRequestContextBytes(v)
+	return _u
+}
+
+// SetNillableRequestContextBytes sets the "request_context_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRequestContextBytes(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRequestContextBytes(*v)
+	}
+	return _u
+}
+
+// AddRequestContextBytes adds value to the "request_context_bytes" field.
+func (_u *UsageLogUpdate) AddRequestContextBytes(v int) *UsageLogUpdate {
+	_u.mutation.AddRequestContextBytes(v)
+	return _u
+}
+
+// ClearRequestContextBytes clears the value of the "request_context_bytes" field.
+func (_u *UsageLogUpdate) ClearRequestContextBytes() *UsageLogUpdate {
+	_u.mutation.ClearRequestContextBytes()
+	return _u
+}
+
 // SetImageCount sets the "image_count" field.
 func (_u *UsageLogUpdate) SetImageCount(v int) *UsageLogUpdate {
 	_u.mutation.ResetImageCount()
@@ -1086,6 +1139,24 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.IPAddressCleared() {
 		_spec.ClearField(usagelog.FieldIPAddress, field.TypeString)
+	}
+	if value, ok := _u.mutation.RequestContextJSON(); ok {
+		_spec.SetField(usagelog.FieldRequestContextJSON, field.TypeJSON, value)
+	}
+	if _u.mutation.RequestContextJSONCleared() {
+		_spec.ClearField(usagelog.FieldRequestContextJSON, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.RequestContextTruncated(); ok {
+		_spec.SetField(usagelog.FieldRequestContextTruncated, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RequestContextBytes(); ok {
+		_spec.SetField(usagelog.FieldRequestContextBytes, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRequestContextBytes(); ok {
+		_spec.AddField(usagelog.FieldRequestContextBytes, field.TypeInt, value)
+	}
+	if _u.mutation.RequestContextBytesCleared() {
+		_spec.ClearField(usagelog.FieldRequestContextBytes, field.TypeInt)
 	}
 	if value, ok := _u.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)
@@ -1933,6 +2004,59 @@ func (_u *UsageLogUpdateOne) ClearIPAddress() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetRequestContextJSON sets the "request_context_json" field.
+func (_u *UsageLogUpdateOne) SetRequestContextJSON(v map[string]interface{}) *UsageLogUpdateOne {
+	_u.mutation.SetRequestContextJSON(v)
+	return _u
+}
+
+// ClearRequestContextJSON clears the value of the "request_context_json" field.
+func (_u *UsageLogUpdateOne) ClearRequestContextJSON() *UsageLogUpdateOne {
+	_u.mutation.ClearRequestContextJSON()
+	return _u
+}
+
+// SetRequestContextTruncated sets the "request_context_truncated" field.
+func (_u *UsageLogUpdateOne) SetRequestContextTruncated(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetRequestContextTruncated(v)
+	return _u
+}
+
+// SetNillableRequestContextTruncated sets the "request_context_truncated" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRequestContextTruncated(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRequestContextTruncated(*v)
+	}
+	return _u
+}
+
+// SetRequestContextBytes sets the "request_context_bytes" field.
+func (_u *UsageLogUpdateOne) SetRequestContextBytes(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetRequestContextBytes()
+	_u.mutation.SetRequestContextBytes(v)
+	return _u
+}
+
+// SetNillableRequestContextBytes sets the "request_context_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRequestContextBytes(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRequestContextBytes(*v)
+	}
+	return _u
+}
+
+// AddRequestContextBytes adds value to the "request_context_bytes" field.
+func (_u *UsageLogUpdateOne) AddRequestContextBytes(v int) *UsageLogUpdateOne {
+	_u.mutation.AddRequestContextBytes(v)
+	return _u
+}
+
+// ClearRequestContextBytes clears the value of the "request_context_bytes" field.
+func (_u *UsageLogUpdateOne) ClearRequestContextBytes() *UsageLogUpdateOne {
+	_u.mutation.ClearRequestContextBytes()
+	return _u
+}
+
 // SetImageCount sets the "image_count" field.
 func (_u *UsageLogUpdateOne) SetImageCount(v int) *UsageLogUpdateOne {
 	_u.mutation.ResetImageCount()
@@ -2351,6 +2475,24 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.IPAddressCleared() {
 		_spec.ClearField(usagelog.FieldIPAddress, field.TypeString)
+	}
+	if value, ok := _u.mutation.RequestContextJSON(); ok {
+		_spec.SetField(usagelog.FieldRequestContextJSON, field.TypeJSON, value)
+	}
+	if _u.mutation.RequestContextJSONCleared() {
+		_spec.ClearField(usagelog.FieldRequestContextJSON, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.RequestContextTruncated(); ok {
+		_spec.SetField(usagelog.FieldRequestContextTruncated, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RequestContextBytes(); ok {
+		_spec.SetField(usagelog.FieldRequestContextBytes, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRequestContextBytes(); ok {
+		_spec.AddField(usagelog.FieldRequestContextBytes, field.TypeInt, value)
+	}
+	if _u.mutation.RequestContextBytesCleared() {
+		_spec.ClearField(usagelog.FieldRequestContextBytes, field.TypeInt)
 	}
 	if value, ok := _u.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)

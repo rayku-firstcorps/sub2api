@@ -4264,6 +4264,13 @@ export default {
       ipAddress: 'IP',
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
+      requestContext: 'Request Context',
+      viewRequestContext: 'View request context',
+      requestContextTruncated: 'Truncated',
+      messageCount: 'Messages',
+      latestUserPrompt: 'Latest User Prompt',
+      fullRequestContext: 'Full Request Context',
+      requestContextCopied: 'Request context copied',
       cleanup: {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',

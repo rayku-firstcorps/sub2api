@@ -444,6 +444,13 @@ type AdminUsageLog struct {
 	// IPAddress 用户请求 IP（仅管理员可见）
 	IPAddress *string `json:"ip_address,omitempty"`
 
+	// RequestContextJSON is a sanitized, size-bounded request body snapshot.
+	RequestContextJSON any `json:"request_context_json,omitempty"`
+	// RequestContextTruncated indicates the stored snapshot was truncated.
+	RequestContextTruncated bool `json:"request_context_truncated"`
+	// RequestContextBytes is the original request body size in bytes.
+	RequestContextBytes *int `json:"request_context_bytes,omitempty"`
+
 	// Account 最小账号信息（避免泄露敏感字段）
 	Account *AccountSummary `json:"account,omitempty"`
 }

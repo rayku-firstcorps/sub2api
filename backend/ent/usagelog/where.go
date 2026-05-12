@@ -220,6 +220,16 @@ func IPAddress(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldIPAddress, v))
 }
 
+// RequestContextTruncated applies equality check predicate on the "request_context_truncated" field. It's identical to RequestContextTruncatedEQ.
+func RequestContextTruncated(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRequestContextTruncated, v))
+}
+
+// RequestContextBytes applies equality check predicate on the "request_context_bytes" field. It's identical to RequestContextBytesEQ.
+func RequestContextBytes(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRequestContextBytes, v))
+}
+
 // ImageCount applies equality check predicate on the "image_count" field. It's identical to ImageCountEQ.
 func ImageCount(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldImageCount, v))
@@ -1783,6 +1793,76 @@ func IPAddressEqualFold(v string) predicate.UsageLog {
 // IPAddressContainsFold applies the ContainsFold predicate on the "ip_address" field.
 func IPAddressContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldIPAddress, v))
+}
+
+// RequestContextJSONIsNil applies the IsNil predicate on the "request_context_json" field.
+func RequestContextJSONIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRequestContextJSON))
+}
+
+// RequestContextJSONNotNil applies the NotNil predicate on the "request_context_json" field.
+func RequestContextJSONNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRequestContextJSON))
+}
+
+// RequestContextTruncatedEQ applies the EQ predicate on the "request_context_truncated" field.
+func RequestContextTruncatedEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRequestContextTruncated, v))
+}
+
+// RequestContextTruncatedNEQ applies the NEQ predicate on the "request_context_truncated" field.
+func RequestContextTruncatedNEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRequestContextTruncated, v))
+}
+
+// RequestContextBytesEQ applies the EQ predicate on the "request_context_bytes" field.
+func RequestContextBytesEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRequestContextBytes, v))
+}
+
+// RequestContextBytesNEQ applies the NEQ predicate on the "request_context_bytes" field.
+func RequestContextBytesNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRequestContextBytes, v))
+}
+
+// RequestContextBytesIn applies the In predicate on the "request_context_bytes" field.
+func RequestContextBytesIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldRequestContextBytes, vs...))
+}
+
+// RequestContextBytesNotIn applies the NotIn predicate on the "request_context_bytes" field.
+func RequestContextBytesNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldRequestContextBytes, vs...))
+}
+
+// RequestContextBytesGT applies the GT predicate on the "request_context_bytes" field.
+func RequestContextBytesGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldRequestContextBytes, v))
+}
+
+// RequestContextBytesGTE applies the GTE predicate on the "request_context_bytes" field.
+func RequestContextBytesGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldRequestContextBytes, v))
+}
+
+// RequestContextBytesLT applies the LT predicate on the "request_context_bytes" field.
+func RequestContextBytesLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldRequestContextBytes, v))
+}
+
+// RequestContextBytesLTE applies the LTE predicate on the "request_context_bytes" field.
+func RequestContextBytesLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldRequestContextBytes, v))
+}
+
+// RequestContextBytesIsNil applies the IsNil predicate on the "request_context_bytes" field.
+func RequestContextBytesIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRequestContextBytes))
+}
+
+// RequestContextBytesNotNil applies the NotNil predicate on the "request_context_bytes" field.
+func RequestContextBytesNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRequestContextBytes))
 }
 
 // ImageCountEQ applies the EQ predicate on the "image_count" field.

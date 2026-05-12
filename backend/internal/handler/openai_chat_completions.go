@@ -257,20 +257,26 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		clientIP := ip.GetClientIP(c)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveRawCCUpstreamEndpoint(c, account)
+		requestPayloadHash := service.HashUsageRequestPayload(body)
+		requestContextJSON, requestContextTruncated, requestContextBytes := service.PrepareUsageLogRequestContext(body)
 
 		h.submitOpenAIUsageRecordTask(result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-				Result:             result,
-				APIKey:             apiKey,
-				User:               apiKey.User,
-				Account:            account,
-				Subscription:       subscription,
-				InboundEndpoint:    inboundEndpoint,
-				UpstreamEndpoint:   upstreamEndpoint,
-				UserAgent:          userAgent,
-				IPAddress:          clientIP,
-				APIKeyService:      h.apiKeyService,
-				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				Result:                  result,
+				APIKey:                  apiKey,
+				User:                    apiKey.User,
+				Account:                 account,
+				Subscription:            subscription,
+				InboundEndpoint:         inboundEndpoint,
+				UpstreamEndpoint:        upstreamEndpoint,
+				UserAgent:               userAgent,
+				IPAddress:               clientIP,
+				RequestPayloadHash:      requestPayloadHash,
+				RequestContextJSON:      requestContextJSON,
+				RequestContextTruncated: requestContextTruncated,
+				RequestContextBytes:     requestContextBytes,
+				APIKeyService:           h.apiKeyService,
+				ChannelUsageFields:      channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.chat_completions"),

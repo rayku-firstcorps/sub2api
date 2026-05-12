@@ -1714,20 +1714,24 @@ func init() {
 	usagelogDescIPAddress := usagelogFields[32].Descriptor()
 	// usagelog.IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
 	usagelog.IPAddressValidator = usagelogDescIPAddress.Validators[0].(func(string) error)
+	// usagelogDescRequestContextTruncated is the schema descriptor for request_context_truncated field.
+	usagelogDescRequestContextTruncated := usagelogFields[34].Descriptor()
+	// usagelog.DefaultRequestContextTruncated holds the default value on creation for the request_context_truncated field.
+	usagelog.DefaultRequestContextTruncated = usagelogDescRequestContextTruncated.Default.(bool)
 	// usagelogDescImageCount is the schema descriptor for image_count field.
-	usagelogDescImageCount := usagelogFields[33].Descriptor()
+	usagelogDescImageCount := usagelogFields[36].Descriptor()
 	// usagelog.DefaultImageCount holds the default value on creation for the image_count field.
 	usagelog.DefaultImageCount = usagelogDescImageCount.Default.(int)
 	// usagelogDescImageSize is the schema descriptor for image_size field.
-	usagelogDescImageSize := usagelogFields[34].Descriptor()
+	usagelogDescImageSize := usagelogFields[37].Descriptor()
 	// usagelog.ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
 	usagelog.ImageSizeValidator = usagelogDescImageSize.Validators[0].(func(string) error)
 	// usagelogDescCacheTTLOverridden is the schema descriptor for cache_ttl_overridden field.
-	usagelogDescCacheTTLOverridden := usagelogFields[35].Descriptor()
+	usagelogDescCacheTTLOverridden := usagelogFields[38].Descriptor()
 	// usagelog.DefaultCacheTTLOverridden holds the default value on creation for the cache_ttl_overridden field.
 	usagelog.DefaultCacheTTLOverridden = usagelogDescCacheTTLOverridden.Default.(bool)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[36].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[39].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()

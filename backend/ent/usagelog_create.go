@@ -449,6 +449,40 @@ func (_c *UsageLogCreate) SetNillableIPAddress(v *string) *UsageLogCreate {
 	return _c
 }
 
+// SetRequestContextJSON sets the "request_context_json" field.
+func (_c *UsageLogCreate) SetRequestContextJSON(v map[string]interface{}) *UsageLogCreate {
+	_c.mutation.SetRequestContextJSON(v)
+	return _c
+}
+
+// SetRequestContextTruncated sets the "request_context_truncated" field.
+func (_c *UsageLogCreate) SetRequestContextTruncated(v bool) *UsageLogCreate {
+	_c.mutation.SetRequestContextTruncated(v)
+	return _c
+}
+
+// SetNillableRequestContextTruncated sets the "request_context_truncated" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRequestContextTruncated(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetRequestContextTruncated(*v)
+	}
+	return _c
+}
+
+// SetRequestContextBytes sets the "request_context_bytes" field.
+func (_c *UsageLogCreate) SetRequestContextBytes(v int) *UsageLogCreate {
+	_c.mutation.SetRequestContextBytes(v)
+	return _c
+}
+
+// SetNillableRequestContextBytes sets the "request_context_bytes" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRequestContextBytes(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetRequestContextBytes(*v)
+	}
+	return _c
+}
+
 // SetImageCount sets the "image_count" field.
 func (_c *UsageLogCreate) SetImageCount(v int) *UsageLogCreate {
 	_c.mutation.SetImageCount(v)
@@ -625,6 +659,10 @@ func (_c *UsageLogCreate) defaults() {
 		v := usagelog.DefaultStream
 		_c.mutation.SetStream(v)
 	}
+	if _, ok := _c.mutation.RequestContextTruncated(); !ok {
+		v := usagelog.DefaultRequestContextTruncated
+		_c.mutation.SetRequestContextTruncated(v)
+	}
 	if _, ok := _c.mutation.ImageCount(); !ok {
 		v := usagelog.DefaultImageCount
 		_c.mutation.SetImageCount(v)
@@ -745,6 +783,9 @@ func (_c *UsageLogCreate) check() error {
 		if err := usagelog.IPAddressValidator(v); err != nil {
 			return &ValidationError{Name: "ip_address", err: fmt.Errorf(`ent: validator failed for field "UsageLog.ip_address": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.RequestContextTruncated(); !ok {
+		return &ValidationError{Name: "request_context_truncated", err: errors.New(`ent: missing required field "UsageLog.request_context_truncated"`)}
 	}
 	if _, ok := _c.mutation.ImageCount(); !ok {
 		return &ValidationError{Name: "image_count", err: errors.New(`ent: missing required field "UsageLog.image_count"`)}
@@ -907,6 +948,18 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IPAddress(); ok {
 		_spec.SetField(usagelog.FieldIPAddress, field.TypeString, value)
 		_node.IPAddress = &value
+	}
+	if value, ok := _c.mutation.RequestContextJSON(); ok {
+		_spec.SetField(usagelog.FieldRequestContextJSON, field.TypeJSON, value)
+		_node.RequestContextJSON = value
+	}
+	if value, ok := _c.mutation.RequestContextTruncated(); ok {
+		_spec.SetField(usagelog.FieldRequestContextTruncated, field.TypeBool, value)
+		_node.RequestContextTruncated = value
+	}
+	if value, ok := _c.mutation.RequestContextBytes(); ok {
+		_spec.SetField(usagelog.FieldRequestContextBytes, field.TypeInt, value)
+		_node.RequestContextBytes = &value
 	}
 	if value, ok := _c.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)
@@ -1640,6 +1693,60 @@ func (u *UsageLogUpsert) UpdateIPAddress() *UsageLogUpsert {
 // ClearIPAddress clears the value of the "ip_address" field.
 func (u *UsageLogUpsert) ClearIPAddress() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldIPAddress)
+	return u
+}
+
+// SetRequestContextJSON sets the "request_context_json" field.
+func (u *UsageLogUpsert) SetRequestContextJSON(v map[string]interface{}) *UsageLogUpsert {
+	u.Set(usagelog.FieldRequestContextJSON, v)
+	return u
+}
+
+// UpdateRequestContextJSON sets the "request_context_json" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRequestContextJSON() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRequestContextJSON)
+	return u
+}
+
+// ClearRequestContextJSON clears the value of the "request_context_json" field.
+func (u *UsageLogUpsert) ClearRequestContextJSON() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRequestContextJSON)
+	return u
+}
+
+// SetRequestContextTruncated sets the "request_context_truncated" field.
+func (u *UsageLogUpsert) SetRequestContextTruncated(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldRequestContextTruncated, v)
+	return u
+}
+
+// UpdateRequestContextTruncated sets the "request_context_truncated" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRequestContextTruncated() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRequestContextTruncated)
+	return u
+}
+
+// SetRequestContextBytes sets the "request_context_bytes" field.
+func (u *UsageLogUpsert) SetRequestContextBytes(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldRequestContextBytes, v)
+	return u
+}
+
+// UpdateRequestContextBytes sets the "request_context_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRequestContextBytes() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRequestContextBytes)
+	return u
+}
+
+// AddRequestContextBytes adds v to the "request_context_bytes" field.
+func (u *UsageLogUpsert) AddRequestContextBytes(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldRequestContextBytes, v)
+	return u
+}
+
+// ClearRequestContextBytes clears the value of the "request_context_bytes" field.
+func (u *UsageLogUpsert) ClearRequestContextBytes() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRequestContextBytes)
 	return u
 }
 
@@ -2412,6 +2519,69 @@ func (u *UsageLogUpsertOne) UpdateIPAddress() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearIPAddress() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearIPAddress()
+	})
+}
+
+// SetRequestContextJSON sets the "request_context_json" field.
+func (u *UsageLogUpsertOne) SetRequestContextJSON(v map[string]interface{}) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestContextJSON(v)
+	})
+}
+
+// UpdateRequestContextJSON sets the "request_context_json" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRequestContextJSON() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestContextJSON()
+	})
+}
+
+// ClearRequestContextJSON clears the value of the "request_context_json" field.
+func (u *UsageLogUpsertOne) ClearRequestContextJSON() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRequestContextJSON()
+	})
+}
+
+// SetRequestContextTruncated sets the "request_context_truncated" field.
+func (u *UsageLogUpsertOne) SetRequestContextTruncated(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestContextTruncated(v)
+	})
+}
+
+// UpdateRequestContextTruncated sets the "request_context_truncated" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRequestContextTruncated() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestContextTruncated()
+	})
+}
+
+// SetRequestContextBytes sets the "request_context_bytes" field.
+func (u *UsageLogUpsertOne) SetRequestContextBytes(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestContextBytes(v)
+	})
+}
+
+// AddRequestContextBytes adds v to the "request_context_bytes" field.
+func (u *UsageLogUpsertOne) AddRequestContextBytes(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRequestContextBytes(v)
+	})
+}
+
+// UpdateRequestContextBytes sets the "request_context_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRequestContextBytes() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestContextBytes()
+	})
+}
+
+// ClearRequestContextBytes clears the value of the "request_context_bytes" field.
+func (u *UsageLogUpsertOne) ClearRequestContextBytes() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRequestContextBytes()
 	})
 }
 
@@ -3358,6 +3528,69 @@ func (u *UsageLogUpsertBulk) UpdateIPAddress() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearIPAddress() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearIPAddress()
+	})
+}
+
+// SetRequestContextJSON sets the "request_context_json" field.
+func (u *UsageLogUpsertBulk) SetRequestContextJSON(v map[string]interface{}) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestContextJSON(v)
+	})
+}
+
+// UpdateRequestContextJSON sets the "request_context_json" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRequestContextJSON() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestContextJSON()
+	})
+}
+
+// ClearRequestContextJSON clears the value of the "request_context_json" field.
+func (u *UsageLogUpsertBulk) ClearRequestContextJSON() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRequestContextJSON()
+	})
+}
+
+// SetRequestContextTruncated sets the "request_context_truncated" field.
+func (u *UsageLogUpsertBulk) SetRequestContextTruncated(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestContextTruncated(v)
+	})
+}
+
+// UpdateRequestContextTruncated sets the "request_context_truncated" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRequestContextTruncated() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestContextTruncated()
+	})
+}
+
+// SetRequestContextBytes sets the "request_context_bytes" field.
+func (u *UsageLogUpsertBulk) SetRequestContextBytes(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestContextBytes(v)
+	})
+}
+
+// AddRequestContextBytes adds v to the "request_context_bytes" field.
+func (u *UsageLogUpsertBulk) AddRequestContextBytes(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRequestContextBytes(v)
+	})
+}
+
+// UpdateRequestContextBytes sets the "request_context_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRequestContextBytes() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestContextBytes()
+	})
+}
+
+// ClearRequestContextBytes clears the value of the "request_context_bytes" field.
+func (u *UsageLogUpsertBulk) ClearRequestContextBytes() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRequestContextBytes()
 	})
 }
 

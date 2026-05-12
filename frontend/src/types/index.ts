@@ -1234,6 +1234,11 @@ export interface AdminUsageLog extends UsageLog {
   // 用户请求 IP（仅管理员可见）
   ip_address?: string | null
 
+  // 请求上下文快照（仅管理员可见，后端已脱敏并限制大小）
+  request_context_json?: Record<string, unknown> | unknown[] | string | null
+  request_context_truncated?: boolean
+  request_context_bytes?: number | null
+
   // 最小账号信息（仅管理员接口返回）
   account?: UsageLogAccountSummary
 }

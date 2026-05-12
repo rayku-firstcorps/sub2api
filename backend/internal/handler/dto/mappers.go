@@ -2,7 +2,9 @@
 package dto
 
 import (
+	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -628,17 +630,32 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	if l == nil {
 		return nil
 	}
+	requestContextJSON := decodeUsageLogRequestContext(l.RequestContextJSON)
 	return &AdminUsageLog{
-		UsageLog:              usageLogFromServiceUser(l),
-		UpstreamModel:         l.UpstreamModel,
-		ChannelID:             l.ChannelID,
-		ModelMappingChain:     l.ModelMappingChain,
-		BillingTier:           l.BillingTier,
-		AccountRateMultiplier: l.AccountRateMultiplier,
-		AccountStatsCost:      l.AccountStatsCost,
-		IPAddress:             l.IPAddress,
-		Account:               AccountSummaryFromService(l.Account),
+		UsageLog:                usageLogFromServiceUser(l),
+		UpstreamModel:           l.UpstreamModel,
+		ChannelID:               l.ChannelID,
+		ModelMappingChain:       l.ModelMappingChain,
+		BillingTier:             l.BillingTier,
+		AccountRateMultiplier:   l.AccountRateMultiplier,
+		AccountStatsCost:        l.AccountStatsCost,
+		IPAddress:               l.IPAddress,
+		RequestContextJSON:      requestContextJSON,
+		RequestContextTruncated: l.RequestContextTruncated,
+		RequestContextBytes:     l.RequestContextBytes,
+		Account:                 AccountSummaryFromService(l.Account),
 	}
+}
+
+func decodeUsageLogRequestContext(raw *string) any {
+	if raw == nil || strings.TrimSpace(*raw) == "" {
+		return nil
+	}
+	var out any
+	if err := json.Unmarshal([]byte(*raw), &out); err != nil {
+		return map[string]any{"raw": *raw}
+	}
+	return out
 }
 
 func UsageCleanupTaskFromService(task *service.UsageCleanupTask) *UsageCleanupTask {

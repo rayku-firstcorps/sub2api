@@ -34257,6 +34257,10 @@ type UsageLogMutation struct {
 	addfirst_token_ms           *int
 	user_agent                  *string
 	ip_address                  *string
+	request_context_json        *map[string]interface{}
+	request_context_truncated   *bool
+	request_context_bytes       *int
+	addrequest_context_bytes    *int
 	image_count                 *int
 	addimage_count              *int
 	image_size                  *string
@@ -36097,6 +36101,161 @@ func (m *UsageLogMutation) ResetIPAddress() {
 	delete(m.clearedFields, usagelog.FieldIPAddress)
 }
 
+// SetRequestContextJSON sets the "request_context_json" field.
+func (m *UsageLogMutation) SetRequestContextJSON(value map[string]interface{}) {
+	m.request_context_json = &value
+}
+
+// RequestContextJSON returns the value of the "request_context_json" field in the mutation.
+func (m *UsageLogMutation) RequestContextJSON() (r map[string]interface{}, exists bool) {
+	v := m.request_context_json
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestContextJSON returns the old "request_context_json" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRequestContextJSON(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestContextJSON is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestContextJSON requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestContextJSON: %w", err)
+	}
+	return oldValue.RequestContextJSON, nil
+}
+
+// ClearRequestContextJSON clears the value of the "request_context_json" field.
+func (m *UsageLogMutation) ClearRequestContextJSON() {
+	m.request_context_json = nil
+	m.clearedFields[usagelog.FieldRequestContextJSON] = struct{}{}
+}
+
+// RequestContextJSONCleared returns if the "request_context_json" field was cleared in this mutation.
+func (m *UsageLogMutation) RequestContextJSONCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRequestContextJSON]
+	return ok
+}
+
+// ResetRequestContextJSON resets all changes to the "request_context_json" field.
+func (m *UsageLogMutation) ResetRequestContextJSON() {
+	m.request_context_json = nil
+	delete(m.clearedFields, usagelog.FieldRequestContextJSON)
+}
+
+// SetRequestContextTruncated sets the "request_context_truncated" field.
+func (m *UsageLogMutation) SetRequestContextTruncated(b bool) {
+	m.request_context_truncated = &b
+}
+
+// RequestContextTruncated returns the value of the "request_context_truncated" field in the mutation.
+func (m *UsageLogMutation) RequestContextTruncated() (r bool, exists bool) {
+	v := m.request_context_truncated
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestContextTruncated returns the old "request_context_truncated" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRequestContextTruncated(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestContextTruncated is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestContextTruncated requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestContextTruncated: %w", err)
+	}
+	return oldValue.RequestContextTruncated, nil
+}
+
+// ResetRequestContextTruncated resets all changes to the "request_context_truncated" field.
+func (m *UsageLogMutation) ResetRequestContextTruncated() {
+	m.request_context_truncated = nil
+}
+
+// SetRequestContextBytes sets the "request_context_bytes" field.
+func (m *UsageLogMutation) SetRequestContextBytes(i int) {
+	m.request_context_bytes = &i
+	m.addrequest_context_bytes = nil
+}
+
+// RequestContextBytes returns the value of the "request_context_bytes" field in the mutation.
+func (m *UsageLogMutation) RequestContextBytes() (r int, exists bool) {
+	v := m.request_context_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestContextBytes returns the old "request_context_bytes" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRequestContextBytes(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestContextBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestContextBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestContextBytes: %w", err)
+	}
+	return oldValue.RequestContextBytes, nil
+}
+
+// AddRequestContextBytes adds i to the "request_context_bytes" field.
+func (m *UsageLogMutation) AddRequestContextBytes(i int) {
+	if m.addrequest_context_bytes != nil {
+		*m.addrequest_context_bytes += i
+	} else {
+		m.addrequest_context_bytes = &i
+	}
+}
+
+// AddedRequestContextBytes returns the value that was added to the "request_context_bytes" field in this mutation.
+func (m *UsageLogMutation) AddedRequestContextBytes() (r int, exists bool) {
+	v := m.addrequest_context_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRequestContextBytes clears the value of the "request_context_bytes" field.
+func (m *UsageLogMutation) ClearRequestContextBytes() {
+	m.request_context_bytes = nil
+	m.addrequest_context_bytes = nil
+	m.clearedFields[usagelog.FieldRequestContextBytes] = struct{}{}
+}
+
+// RequestContextBytesCleared returns if the "request_context_bytes" field was cleared in this mutation.
+func (m *UsageLogMutation) RequestContextBytesCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRequestContextBytes]
+	return ok
+}
+
+// ResetRequestContextBytes resets all changes to the "request_context_bytes" field.
+func (m *UsageLogMutation) ResetRequestContextBytes() {
+	m.request_context_bytes = nil
+	m.addrequest_context_bytes = nil
+	delete(m.clearedFields, usagelog.FieldRequestContextBytes)
+}
+
 // SetImageCount sets the "image_count" field.
 func (m *UsageLogMutation) SetImageCount(i int) {
 	m.image_count = &i
@@ -36443,7 +36602,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 37)
+	fields := make([]string, 0, 40)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -36543,6 +36702,15 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.ip_address != nil {
 		fields = append(fields, usagelog.FieldIPAddress)
 	}
+	if m.request_context_json != nil {
+		fields = append(fields, usagelog.FieldRequestContextJSON)
+	}
+	if m.request_context_truncated != nil {
+		fields = append(fields, usagelog.FieldRequestContextTruncated)
+	}
+	if m.request_context_bytes != nil {
+		fields = append(fields, usagelog.FieldRequestContextBytes)
+	}
 	if m.image_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
 	}
@@ -36629,6 +36797,12 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.UserAgent()
 	case usagelog.FieldIPAddress:
 		return m.IPAddress()
+	case usagelog.FieldRequestContextJSON:
+		return m.RequestContextJSON()
+	case usagelog.FieldRequestContextTruncated:
+		return m.RequestContextTruncated()
+	case usagelog.FieldRequestContextBytes:
+		return m.RequestContextBytes()
 	case usagelog.FieldImageCount:
 		return m.ImageCount()
 	case usagelog.FieldImageSize:
@@ -36712,6 +36886,12 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldUserAgent(ctx)
 	case usagelog.FieldIPAddress:
 		return m.OldIPAddress(ctx)
+	case usagelog.FieldRequestContextJSON:
+		return m.OldRequestContextJSON(ctx)
+	case usagelog.FieldRequestContextTruncated:
+		return m.OldRequestContextTruncated(ctx)
+	case usagelog.FieldRequestContextBytes:
+		return m.OldRequestContextBytes(ctx)
 	case usagelog.FieldImageCount:
 		return m.OldImageCount(ctx)
 	case usagelog.FieldImageSize:
@@ -36960,6 +37140,27 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetIPAddress(v)
 		return nil
+	case usagelog.FieldRequestContextJSON:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestContextJSON(v)
+		return nil
+	case usagelog.FieldRequestContextTruncated:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestContextTruncated(v)
+		return nil
+	case usagelog.FieldRequestContextBytes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestContextBytes(v)
+		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
 		if !ok {
@@ -37050,6 +37251,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addfirst_token_ms != nil {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
 	}
+	if m.addrequest_context_bytes != nil {
+		fields = append(fields, usagelog.FieldRequestContextBytes)
+	}
 	if m.addimage_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
 	}
@@ -37097,6 +37301,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedDurationMs()
 	case usagelog.FieldFirstTokenMs:
 		return m.AddedFirstTokenMs()
+	case usagelog.FieldRequestContextBytes:
+		return m.AddedRequestContextBytes()
 	case usagelog.FieldImageCount:
 		return m.AddedImageCount()
 	}
@@ -37234,6 +37440,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddFirstTokenMs(v)
 		return nil
+	case usagelog.FieldRequestContextBytes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRequestContextBytes(v)
+		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
 		if !ok {
@@ -37287,6 +37500,12 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usagelog.FieldIPAddress) {
 		fields = append(fields, usagelog.FieldIPAddress)
+	}
+	if m.FieldCleared(usagelog.FieldRequestContextJSON) {
+		fields = append(fields, usagelog.FieldRequestContextJSON)
+	}
+	if m.FieldCleared(usagelog.FieldRequestContextBytes) {
+		fields = append(fields, usagelog.FieldRequestContextBytes)
 	}
 	if m.FieldCleared(usagelog.FieldImageSize) {
 		fields = append(fields, usagelog.FieldImageSize)
@@ -37343,6 +37562,12 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldIPAddress:
 		m.ClearIPAddress()
+		return nil
+	case usagelog.FieldRequestContextJSON:
+		m.ClearRequestContextJSON()
+		return nil
+	case usagelog.FieldRequestContextBytes:
+		m.ClearRequestContextBytes()
 		return nil
 	case usagelog.FieldImageSize:
 		m.ClearImageSize()
@@ -37453,6 +37678,15 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldIPAddress:
 		m.ResetIPAddress()
+		return nil
+	case usagelog.FieldRequestContextJSON:
+		m.ResetRequestContextJSON()
+		return nil
+	case usagelog.FieldRequestContextTruncated:
+		m.ResetRequestContextTruncated()
+		return nil
+	case usagelog.FieldRequestContextBytes:
+		m.ResetRequestContextBytes()
 		return nil
 	case usagelog.FieldImageCount:
 		m.ResetImageCount()

@@ -183,10 +183,113 @@
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
+        <template #cell-context="{ row }">
+          <button
+            v-if="hasRequestContext(row)"
+            type="button"
+            class="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600 dark:border-gray-700 dark:text-gray-300 dark:hover:border-primary-700 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
+            :title="t('admin.usage.viewRequestContext')"
+            @click="openRequestContext(row)"
+          >
+            <Icon name="terminal" size="sm" />
+          </button>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #empty><EmptyState :message="t('usage.noRecords')" /></template>
       </DataTable>
     </div>
   </div>
+
+  <Teleport to="body">
+    <div
+      v-if="requestContextVisible"
+      class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/45 p-4"
+      @click.self="closeRequestContext"
+    >
+      <div class="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div class="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
+          <div class="min-w-0">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.usage.requestContext') }}</h3>
+            <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <span class="font-mono">{{ requestContextRow?.request_id || '-' }}</span>
+              <span v-if="requestContextRow?.request_context_bytes != null">{{ formatBytes(requestContextRow.request_context_bytes) }}</span>
+              <span
+                v-if="requestContextRow?.request_context_truncated"
+                class="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+              >
+                {{ t('admin.usage.requestContextTruncated') }}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white"
+            :title="t('common.close')"
+            @click="closeRequestContext"
+          >
+            <Icon name="x" size="sm" />
+          </button>
+        </div>
+        <div class="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[280px_1fr]">
+          <div class="border-b border-gray-200 p-4 dark:border-gray-700 lg:border-b-0 lg:border-r">
+            <dl class="space-y-3 text-sm">
+              <div>
+                <dt class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{{ t('usage.model') }}</dt>
+                <dd class="mt-1 break-all font-mono text-gray-900 dark:text-white">{{ requestContextModel || '-' }}</dd>
+              </div>
+              <div>
+                <dt class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{{ t('usage.type') }}</dt>
+                <dd class="mt-1 text-gray-900 dark:text-white">{{ requestContextShape }}</dd>
+              </div>
+              <div>
+                <dt class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{{ t('admin.usage.messageCount') }}</dt>
+                <dd class="mt-1 text-gray-900 dark:text-white">{{ requestContextMessageCount }}</dd>
+              </div>
+            </dl>
+          </div>
+          <div class="min-h-0 space-y-4 overflow-auto bg-gray-950 p-4">
+            <section class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-emerald-200">{{ t('admin.usage.latestUserPrompt') }}</h4>
+                <span v-if="requestContextPromptSource" class="rounded bg-emerald-400/15 px-2 py-0.5 font-mono text-[11px] text-emerald-100">
+                  {{ requestContextPromptSource }}
+                </span>
+              </div>
+              <pre class="max-h-64 whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-emerald-50">{{ requestContextLatestPrompt || '-' }}</pre>
+            </section>
+
+            <section>
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-300">{{ t('admin.usage.fullRequestContext') }}</h4>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded border border-gray-700 bg-gray-900 px-2.5 py-1 text-xs font-medium text-gray-200 transition-colors hover:border-primary-500 hover:text-primary-200"
+                    :disabled="!formattedRequestContext"
+                    @click="copyRequestContext"
+                  >
+                    <Icon name="copy" size="xs" />
+                    {{ t('common.copy') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded border border-gray-700 bg-gray-900 px-2.5 py-1 text-xs font-medium text-gray-200 transition-colors hover:border-primary-500 hover:text-primary-200"
+                    :disabled="!formattedRequestContext"
+                    @click="exportRequestContext"
+                  >
+                    <Icon name="download" size="xs" />
+                    {{ t('common.export') }}
+                  </button>
+                </div>
+              </div>
+              <pre class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-gray-100">{{ formattedRequestContext }}</pre>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 
   <!-- Token Tooltip Portal -->
   <Teleport to="body">
@@ -358,7 +461,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
@@ -366,6 +469,7 @@ import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
 import { getBillingModeLabel, getBillingModeBadgeClass, BILLING_MODE_TOKEN, BILLING_MODE_IMAGE } from '@/utils/billingMode'
+import { useClipboard } from '@/composables/useClipboard'
 
 /** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */
 function accountBilled(row: { total_cost?: number | null; account_stats_cost?: number | null; account_rate_multiplier?: number | null }): number {
@@ -407,6 +511,7 @@ defineEmits<{
   sort: [key: string, order: 'asc' | 'desc']
 }>()
 const { t } = useI18n()
+const { copyToClipboard } = useClipboard()
 
 // Tooltip state - cost
 const tooltipVisible = ref(false)
@@ -417,6 +522,220 @@ const tooltipData = ref<AdminUsageLog | null>(null)
 const tokenTooltipVisible = ref(false)
 const tokenTooltipPosition = ref({ x: 0, y: 0 })
 const tokenTooltipData = ref<AdminUsageLog | null>(null)
+
+const requestContextVisible = ref(false)
+const requestContextRow = ref<AdminUsageLog | null>(null)
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+
+const hasRequestContext = (row: AdminUsageLog): boolean => {
+  const context = row.request_context_json
+  if (context == null) return false
+  if (typeof context === 'string') return context.trim().length > 0
+  return true
+}
+
+const openRequestContext = (row: AdminUsageLog) => {
+  requestContextRow.value = row
+  requestContextVisible.value = true
+}
+
+const closeRequestContext = () => {
+  requestContextVisible.value = false
+  requestContextRow.value = null
+}
+
+const formattedRequestContext = computed(() => {
+  const context = requestContextRow.value?.request_context_json
+  if (context == null) return ''
+  if (typeof context === 'string') return context
+  return JSON.stringify(context, null, 2)
+})
+
+type ExtractedPrompt = {
+  text: string
+  source: string
+}
+
+const requestContextLatestPrompt = computed(() => extractLatestUserPrompt(requestContextRow.value?.request_context_json)?.text ?? '')
+const requestContextPromptSource = computed(() => extractLatestUserPrompt(requestContextRow.value?.request_context_json)?.source ?? '')
+
+const safeFilenamePart = (value: string): string => {
+  const cleaned = value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+  return cleaned || 'unknown'
+}
+
+const requestContextFilename = computed(() => {
+  const requestID = safeFilenamePart(requestContextRow.value?.request_id || 'request')
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+  return `request-context-${requestID}-${timestamp}.json`
+})
+
+const copyRequestContext = async () => {
+  if (!formattedRequestContext.value) return
+  await copyToClipboard(formattedRequestContext.value, t('admin.usage.requestContextCopied'))
+}
+
+const exportRequestContext = () => {
+  if (!formattedRequestContext.value) return
+  const blob = new Blob([formattedRequestContext.value], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = requestContextFilename.value
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+const requestContextModel = computed(() => {
+  const context = requestContextRow.value?.request_context_json
+  if (isRecord(context) && typeof context.model === 'string') {
+    return context.model
+  }
+  return requestContextRow.value?.model || ''
+})
+
+const requestContextArrayFor = (keys: string[]): unknown[] | null => {
+  const context = requestContextRow.value?.request_context_json
+  if (!isRecord(context)) return null
+  for (const key of keys) {
+    const value = context[key]
+    if (Array.isArray(value)) return value
+  }
+  return null
+}
+
+const requestContextShape = computed(() => {
+  const context = requestContextRow.value?.request_context_json
+  if (isRecord(context)) {
+    if (Array.isArray(context.messages)) return 'messages'
+    if (Array.isArray(context.input)) return 'input'
+    if (Array.isArray(context.contents)) return 'contents'
+    if (context.prompt != null) return 'prompt'
+  }
+  if (Array.isArray(context)) return 'array'
+  return typeof context === 'string' ? 'raw' : 'object'
+})
+
+const requestContextMessageCount = computed(() => {
+  const messages = requestContextArrayFor(['messages', 'input', 'contents'])
+  return messages?.length ?? 0
+})
+
+const normalizePromptText = (value: unknown): string => {
+  if (typeof value !== 'string') return ''
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+const collectTextFromContent = (value: unknown): string[] => {
+  if (typeof value === 'string') {
+    const text = normalizePromptText(value)
+    return text ? [text] : []
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectTextFromContent(item))
+  }
+  if (!isRecord(value)) return []
+
+  const type = typeof value.type === 'string' ? value.type.toLowerCase().trim() : ''
+  const parts: string[] = []
+  if (['', 'text', 'input_text', 'message'].includes(type)) {
+    if (typeof value.text === 'string') {
+      const text = normalizePromptText(value.text)
+      if (text) parts.push(text)
+    }
+    if ('content' in value) {
+      parts.push(...collectTextFromContent(value.content))
+    }
+  }
+  return parts
+}
+
+const promptFromMessage = (item: unknown): string => {
+  if (!isRecord(item)) return ''
+  const parts = collectTextFromContent(item.content)
+  if (typeof item.text === 'string') {
+    const text = normalizePromptText(item.text)
+    if (text) parts.push(text)
+  }
+  return parts.join('\n').trim()
+}
+
+const extractFromRoleArray = (items: unknown[], source: string, allowEmptyRole = false): ExtractedPrompt | null => {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]
+    if (!isRecord(item)) continue
+    const role = typeof item.role === 'string' ? item.role.toLowerCase().trim() : ''
+    if (role !== 'user' && !(allowEmptyRole && role === '')) continue
+    const text = promptFromMessage(item)
+    if (text) return { text, source }
+  }
+  return null
+}
+
+const extractFromGeminiContents = (items: unknown[]): ExtractedPrompt | null => {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]
+    if (!isRecord(item)) continue
+    const role = typeof item.role === 'string' ? item.role.toLowerCase().trim() : ''
+    if (role && role !== 'user') continue
+    const parts = Array.isArray(item.parts) ? item.parts : []
+    const text = parts.flatMap((part) => isRecord(part) ? collectTextFromContent(part.text) : []).join('\n').trim()
+    if (text) return { text, source: 'contents:last user' }
+  }
+  return null
+}
+
+const extractLatestUserPrompt = (context: unknown): ExtractedPrompt | null => {
+  if (typeof context === 'string') {
+    try {
+      return extractLatestUserPrompt(JSON.parse(context))
+    } catch {
+      const text = normalizePromptText(context)
+      return text ? { text, source: 'raw' } : null
+    }
+  }
+  if (Array.isArray(context)) {
+    return extractFromRoleArray(context, 'array:last user', true)
+  }
+  if (!isRecord(context)) return null
+
+  if (Array.isArray(context.input)) {
+    const prompt = extractFromRoleArray(context.input, 'input:last user', true)
+    if (prompt) return prompt
+  }
+  if (typeof context.input === 'string') {
+    const text = normalizePromptText(context.input)
+    if (text) return { text, source: 'input' }
+  }
+  if (isRecord(context.input)) {
+    const text = promptFromMessage(context.input)
+    if (text) return { text, source: 'input' }
+  }
+  if (Array.isArray(context.messages)) {
+    const prompt = extractFromRoleArray(context.messages, 'messages:last user')
+    if (prompt) return prompt
+  }
+  if (Array.isArray(context.contents)) {
+    const prompt = extractFromGeminiContents(context.contents)
+    if (prompt) return prompt
+  }
+  if (typeof context.prompt === 'string') {
+    const text = normalizePromptText(context.prompt)
+    if (text) return { text, source: 'prompt' }
+  }
+  return null
+}
+
+const formatBytes = (bytes: number | null | undefined): string => {
+  if (bytes == null || !Number.isFinite(bytes)) return '-'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 const getRequestTypeLabel = (row: AdminUsageLog): string => {
   const requestType = resolveUsageRequestType(row)

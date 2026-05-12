@@ -536,6 +536,7 @@ const allColumns = computed(() => [
   { key: 'first_token', label: t('usage.firstToken'), sortable: false },
   { key: 'duration', label: t('usage.duration'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
+  { key: 'context', label: t('admin.usage.requestContext'), sortable: false },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false },
   { key: 'ip_address', label: t('admin.usage.ipAddress'), sortable: false }
 ])
@@ -572,8 +573,11 @@ const loadSavedColumns = () => {
     const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
     if (saved) {
       (JSON.parse(saved) as string[]).forEach((key) => {
-        hiddenColumns.add(key)
+        if (key !== 'context') {
+          hiddenColumns.add(key)
+        }
       })
+      localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
     } else {
       DEFAULT_HIDDEN_COLUMNS.forEach((key) => {
         hiddenColumns.add(key)

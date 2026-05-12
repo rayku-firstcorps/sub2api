@@ -126,6 +126,16 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(45). // 支持 IPv6
 			Optional().
 			Nillable(),
+		field.JSON("request_context_json", map[string]any{}).
+			Optional().
+			Comment("sanitized request context snapshot"),
+		field.Bool("request_context_truncated").
+			Default(false).
+			Comment("request context snapshot was truncated"),
+		field.Int("request_context_bytes").
+			Optional().
+			Nillable().
+			Comment("original request body size in bytes"),
 
 		// 图片生成字段（仅 gemini-3-pro-image 等图片模型使用）
 		field.Int("image_count").

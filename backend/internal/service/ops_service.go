@@ -616,8 +616,11 @@ func isSensitiveKey(key string) bool {
 }
 
 func trimConversationArrays(root map[string]any, maxBytes int) (map[string]any, bool) {
-	// Supported: anthropic/openai: messages; gemini: contents.
+	// Supported: anthropic/openai chat: messages; OpenAI responses: input; gemini: contents.
 	if out, ok := trimArrayField(root, "messages", maxBytes); ok {
+		return out, true
+	}
+	if out, ok := trimArrayField(root, "input", maxBytes); ok {
 		return out, true
 	}
 	if out, ok := trimArrayField(root, "contents", maxBytes); ok {
@@ -707,6 +710,18 @@ func shrinkToEssentials(root map[string]any) map[string]any {
 	if v, ok := root["messages"]; ok {
 		if arr, ok := v.([]any); ok && len(arr) > 0 {
 			out["messages"] = []any{arr[len(arr)-1]}
+		}
+	}
+	if v, ok := root["input"]; ok {
+		switch vv := v.(type) {
+		case []any:
+			if len(vv) > 0 {
+				out["input"] = []any{vv[len(vv)-1]}
+			}
+		case string:
+			out["input"] = vv
+		case map[string]any:
+			out["input"] = vv
 		}
 	}
 	if v, ok := root["contents"]; ok {

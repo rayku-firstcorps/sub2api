@@ -80,6 +80,12 @@ const (
 	FieldUserAgent = "user_agent"
 	// FieldIPAddress holds the string denoting the ip_address field in the database.
 	FieldIPAddress = "ip_address"
+	// FieldRequestContextJSON holds the string denoting the request_context_json field in the database.
+	FieldRequestContextJSON = "request_context_json"
+	// FieldRequestContextTruncated holds the string denoting the request_context_truncated field in the database.
+	FieldRequestContextTruncated = "request_context_truncated"
+	// FieldRequestContextBytes holds the string denoting the request_context_bytes field in the database.
+	FieldRequestContextBytes = "request_context_bytes"
 	// FieldImageCount holds the string denoting the image_count field in the database.
 	FieldImageCount = "image_count"
 	// FieldImageSize holds the string denoting the image_size field in the database.
@@ -173,6 +179,9 @@ var Columns = []string{
 	FieldFirstTokenMs,
 	FieldUserAgent,
 	FieldIPAddress,
+	FieldRequestContextJSON,
+	FieldRequestContextTruncated,
+	FieldRequestContextBytes,
 	FieldImageCount,
 	FieldImageSize,
 	FieldCacheTTLOverridden,
@@ -238,6 +247,8 @@ var (
 	UserAgentValidator func(string) error
 	// IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
 	IPAddressValidator func(string) error
+	// DefaultRequestContextTruncated holds the default value on creation for the "request_context_truncated" field.
+	DefaultRequestContextTruncated bool
 	// DefaultImageCount holds the default value on creation for the "image_count" field.
 	DefaultImageCount int
 	// ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
@@ -419,6 +430,16 @@ func ByUserAgent(opts ...sql.OrderTermOption) OrderOption {
 // ByIPAddress orders the results by the ip_address field.
 func ByIPAddress(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIPAddress, opts...).ToFunc()
+}
+
+// ByRequestContextTruncated orders the results by the request_context_truncated field.
+func ByRequestContextTruncated(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRequestContextTruncated, opts...).ToFunc()
+}
+
+// ByRequestContextBytes orders the results by the request_context_bytes field.
+func ByRequestContextBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRequestContextBytes, opts...).ToFunc()
 }
 
 // ByImageCount orders the results by the image_count field.
