@@ -462,7 +462,7 @@ func (s *SchedulerSnapshotService) rebuildByAccount(ctx context.Context, account
 	}
 
 	var firstErr error
-	if err := s.rebuildBucketsForPlatform(ctx, account.Platform, groupIDs, reason, seen); err != nil && firstErr == nil {
+	if err := s.rebuildBucketsForPlatform(ctx, schedulerPlatformForAccount(account.Platform), groupIDs, reason, seen); err != nil && firstErr == nil {
 		firstErr = err
 	}
 	if account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
@@ -643,7 +643,7 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 	}
 
 	if useMixed {
-		platforms := []string{bucket.Platform, PlatformAntigravity}
+		platforms := schedulerPlatformsForBucket(bucket.Platform, true)
 		var accounts []Account
 		var err error
 		if groupID > 0 {
@@ -666,6 +666,17 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return filtered, nil
 	}
 
+	if bucket.Platform == PlatformAnthropic {
+		platforms := schedulerPlatformsForBucket(bucket.Platform, false)
+		if groupID > 0 {
+			return s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, groupID, platforms)
+		}
+		if s.isRunModeSimple() {
+			return s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
+		}
+		return s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, platforms)
+	}
+
 	if groupID > 0 {
 		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, groupID, bucket.Platform)
 	}
@@ -673,6 +684,24 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
 	}
 	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
+}
+
+func schedulerPlatformsForBucket(platform string, mixed bool) []string {
+	platforms := []string{platform}
+	if platform == PlatformAnthropic {
+		platforms = append(platforms, PlatformKiro)
+	}
+	if mixed {
+		platforms = append(platforms, PlatformAntigravity)
+	}
+	return platforms
+}
+
+func schedulerPlatformForAccount(platform string) string {
+	if platform == PlatformKiro {
+		return PlatformAnthropic
+	}
+	return platform
 }
 
 func (s *SchedulerSnapshotService) bucketFor(groupID *int64, platform string, mode string) SchedulerBucket {

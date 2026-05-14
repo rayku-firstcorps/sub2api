@@ -15,6 +15,14 @@ vi.mock('@/api/admin', () => ({
   }
 }))
 
+vi.mock('@/utils/format', () => ({
+  formatCompactNumber: (value: number) => {
+    if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+    return String(value)
+  }
+}))
+
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
@@ -149,6 +157,49 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('25')
   })
 
+  it('Kiro OAuth renders getUsageLimits usage windows', async () => {
+    getUsage.mockResolvedValue({
+      kiro_breakdown: [
+        {
+          resource_type: 'AGENTIC_REQUEST',
+          display_name: 'Agentic request',
+          unit: 'requests',
+          current_usage: 25.5,
+          usage_limit: 100,
+          utilization: 25.5,
+          resets_at: '2026-05-13T14:00:00Z',
+          remaining_seconds: 7200
+        }
+      ]
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3001,
+          platform: 'kiro',
+          type: 'oauth',
+          extra: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}|{{ color }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(3001, undefined)
+    expect(wrapper.text()).toContain('req|25.5|2026-05-13T14:00:00Z|indigo')
+    expect(wrapper.text()).toContain('Agentic request')
+  })
+
 
   it('OpenAI OAuth 快照已过期时首屏会重新请求 usage', async () => {
     getUsage.mockResolvedValue({
@@ -206,7 +257,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2000)
+    expect(getUsage).toHaveBeenCalledWith(2000, undefined)
     expect(wrapper.text()).toContain('5h|15|300')
     expect(wrapper.text()).toContain('7d|77|300')
   })
@@ -267,7 +318,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2001)
+    expect(getUsage).toHaveBeenCalledWith(2001, undefined)
     // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
     expect(wrapper.text()).toContain('5h|18|900')
     expect(wrapper.text()).toContain('7d|36|900')
@@ -338,7 +389,7 @@ describe('AccountUsageCell', () => {
 
     // 手动刷新再拉一次
     expect(getUsage).toHaveBeenCalledTimes(2)
-    expect(getUsage).toHaveBeenCalledWith(2010)
+    expect(getUsage).toHaveBeenCalledWith(2010, undefined)
     // 单一数据源：始终使用 /usage API 值
     expect(wrapper.text()).toContain('5h|18|900')
   })
@@ -393,7 +444,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-	expect(getUsage).toHaveBeenCalledWith(2002)
+	expect(getUsage).toHaveBeenCalledWith(2002, undefined)
 	expect(wrapper.text()).toContain('5h|0|27700')
 	expect(wrapper.text()).toContain('7d|0|27700')
   })
@@ -525,7 +576,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-  expect(getUsage).toHaveBeenCalledWith(2004)
+  expect(getUsage).toHaveBeenCalledWith(2004, undefined)
   expect(wrapper.text()).toContain('5h|100|106540000')
   expect(wrapper.text()).toContain('7d|100|106540000')
   })

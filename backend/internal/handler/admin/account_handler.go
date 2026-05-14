@@ -900,6 +900,13 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 				return nil, "", fmt.Errorf("failed to clear account error: %w", clearErr)
 			}
 		}
+	} else if account.Platform == service.PlatformKiro {
+		refresher := service.NewKiroTokenRefresher()
+		creds, refreshErr := refresher.Refresh(ctx, account)
+		if refreshErr != nil {
+			return nil, "", refreshErr
+		}
+		newCredentials = creds
 	} else {
 		// Use Anthropic/Claude OAuth service to refresh token
 		tokenInfo, err := h.oauthService.RefreshAccountToken(ctx, account)
@@ -1950,6 +1957,25 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	if account.Platform == service.PlatformAntigravity {
 		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
 		response.Success(c, antigravity.DefaultModels())
+		return
+	}
+
+	// Handle Kiro accounts: return models from DefaultKiroModelMapping
+	if account.Platform == service.PlatformKiro {
+		seen := make(map[string]bool)
+		var models []claude.Model
+		for id := range domain.DefaultKiroModelMapping {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			models = append(models, claude.Model{
+				ID:          id,
+				Type:        "model",
+				DisplayName: id,
+			})
+		}
+		response.Success(c, models)
 		return
 	}
 

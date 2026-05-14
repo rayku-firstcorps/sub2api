@@ -12,17 +12,23 @@ ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG GOPROXY=https://proxy.golang.org,direct
 ARG GOSUMDB=sum.golang.org
+ARG NPM_REGISTRY=https://registry.npmjs.org/
 
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
 # -----------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS frontend-builder
 
+ARG NPM_REGISTRY
+
 WORKDIR /app/frontend
 
 # Install pnpm. Keep this pinned to the lockfile-era major version; pnpm 11
 # fails this build unless dependency build scripts are explicitly approved.
-RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+RUN npm config set registry "${NPM_REGISTRY}" && \
+    corepack enable && \
+    COREPACK_NPM_REGISTRY="${NPM_REGISTRY}" corepack prepare pnpm@9.15.9 --activate && \
+    pnpm config set registry "${NPM_REGISTRY}"
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml ./

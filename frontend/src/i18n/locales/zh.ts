@@ -2067,6 +2067,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        kiro: 'Kiro',
       },
       saving: '保存中...',
       noGroups: '暂无分组',
@@ -3044,6 +3045,7 @@ export default {
         anthropic: 'Anthropic',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        kiro: 'Kiro',
       },
       types: {
         oauth: 'OAuth',
@@ -3710,6 +3712,27 @@ export default {
           validateAndCreate: '验证并创建账号',
           pleaseEnterRefreshToken: '请输入 Refresh Token',
           failedToValidateRT: '验证 Refresh Token 失败'
+        },
+        // Kiro specific
+        kiro: {
+          title: 'Kiro 账号导入',
+          description: '粘贴 Kiro Refresh Token（每行一个）进行批量导入，系统将自动验证并创建账号。',
+          authMethod: '认证方式',
+          socialAuth: 'Social Auth',
+          builderId: 'Builder ID',
+          region: '区域',
+          regionPlaceholder: 'us-east-1',
+          clientId: 'Client ID',
+          clientIdPlaceholder: '输入 Builder ID Client ID',
+          clientSecret: 'Client Secret',
+          clientSecretPlaceholder: '输入 Builder ID Client Secret',
+          refreshTokenPlaceholder: '粘贴 Kiro Refresh Token...\n支持多个，每行一个',
+          importButton: '导入',
+          importing: '导入中...',
+          importSuccess: '导入完成：创建 {created} 个，更新 {updated} 个，跳过 {skipped} 个，失败 {failed} 个',
+          importPartial: '部分导入：创建 {created} 个，更新 {updated} 个，失败 {failed} 个',
+          importFailed: 'Kiro 账号导入失败',
+          emptyInput: '请输入 Refresh Token'
         }
       },
       // Gemini specific (platform-wide)

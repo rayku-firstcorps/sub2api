@@ -18,6 +18,7 @@ import type {
   AdminDataImportResult,
   CodexSessionImportRequest,
   CodexSessionImportResult,
+  KiroImportRequest,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse
 } from '@/types'
@@ -554,6 +555,11 @@ export async function importCodexSession(payload: CodexSessionImportRequest): Pr
   return data
 }
 
+export async function importKiroAccounts(payload: KiroImportRequest): Promise<CodexSessionImportResult> {
+  const { data } = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/kiro', payload)
+  return data
+}
+
 /**
  * Get Antigravity default model mapping from backend
  * @returns Default model mapping (from -> to)
@@ -671,6 +677,7 @@ export const accountsAPI = {
   exportData,
   importData,
   importCodexSession,
+  importKiroAccounts,
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,

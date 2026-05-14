@@ -2039,6 +2039,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        kiro: 'Kiro',
       },
       deleteConfirm:
         "Are you sure you want to delete '{name}'? All associated API keys will no longer belong to any group.",
@@ -2859,6 +2860,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        kiro: 'Kiro',
       },
       types: {
         oauth: 'OAuth',
@@ -3579,7 +3581,28 @@ export default {
                     validateAndCreate: 'Validate & Create',
                     pleaseEnterRefreshToken: 'Please enter Refresh Token',
                     failedToValidateRT: 'Failed to validate Refresh Token'
-                  }
+                  },
+                // Kiro specific
+                kiro: {
+                  title: 'Kiro Account Import',
+                  description: 'Paste Kiro Refresh Token (one per line) for batch import. The system will automatically validate and create accounts.',
+                  authMethod: 'Auth Method',
+                  socialAuth: 'Social Auth',
+                  builderId: 'Builder ID',
+                  region: 'Region',
+                  regionPlaceholder: 'us-east-1',
+                  clientId: 'Client ID',
+                  clientIdPlaceholder: 'Enter Builder ID Client ID',
+                  clientSecret: 'Client Secret',
+                  clientSecretPlaceholder: 'Enter Builder ID Client Secret',
+                  refreshTokenPlaceholder: 'Paste Kiro Refresh Token...\nSupports multiple tokens, one per line',
+                  importButton: 'Import',
+                  importing: 'Importing...',
+                  importSuccess: 'Import complete: {created} created, {updated} updated, {skipped} skipped, {failed} failed',
+                  importPartial: 'Partial import: {created} created, {updated} updated, {failed} failed',
+                  importFailed: 'Kiro account import failed',
+                  emptyInput: 'Please enter Refresh Token'
+                }
                 },      // Gemini specific (platform-wide)
       gemini: {
         helpButton: 'Help',
