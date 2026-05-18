@@ -16,6 +16,10 @@
               <Icon name="refresh" size="sm" :class="statusLoading ? 'animate-spin' : ''" />
               {{ t('admin.riskControl.refreshStatus') }}
             </button>
+            <button type="button" class="btn btn-secondary inline-flex items-center gap-2" @click="openKeywordSettings">
+              <Icon name="filter" size="sm" />
+              {{ t('admin.riskControl.keyword.openSettings') }}
+            </button>
             <button type="button" class="btn btn-primary inline-flex items-center gap-2" @click="openSettings">
               <Icon name="cog" size="sm" />
               {{ t('admin.riskControl.openSettings') }}
@@ -136,12 +140,31 @@
           <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.records') }}</h2>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.recordsHint') }}</p>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ activeRecordTab === 'keyword' ? t('admin.riskControl.keyword.records') : t('admin.riskControl.records') }}</h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ activeRecordTab === 'keyword' ? t('admin.riskControl.keyword.recordsHint') : t('admin.riskControl.recordsHint') }}</p>
               </div>
               <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="logsLoading" @click="loadLogs">
                 <Icon name="refresh" size="sm" :class="logsLoading ? 'animate-spin' : ''" />
                 {{ t('admin.riskControl.refresh') }}
+              </button>
+            </div>
+
+            <div class="inline-flex w-fit rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+              <button
+                type="button"
+                class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+                :class="activeRecordTab === 'keyword' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-800 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
+                @click="switchRecordTab('keyword')"
+              >
+                {{ t('admin.riskControl.keyword.records') }}
+              </button>
+              <button
+                type="button"
+                class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+                :class="activeRecordTab === 'moderation' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-800 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
+                @click="switchRecordTab('moderation')"
+              >
+                {{ t('admin.riskControl.records') }}
               </button>
             </div>
 
@@ -155,7 +178,54 @@
             </div>
           </div>
 
-          <div class="overflow-x-auto">
+          <div v-if="activeRecordTab === 'keyword'" class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
+              <thead class="bg-gray-50 dark:bg-dark-800">
+                <tr>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.time') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.group') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.user') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.endpoint') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.keyword.match') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.input') }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-800 dark:bg-dark-800">
+                <tr v-if="logsLoading">
+                  <td colspan="6" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</td>
+                </tr>
+                <tr v-else-if="keywordLogs.length === 0">
+                  <td colspan="6" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.keyword.emptyLogs') }}</td>
+                </tr>
+                <template v-else>
+                  <tr v-for="row in keywordLogs" :key="row.id" class="hover:bg-gray-50 dark:hover:bg-dark-700/60">
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(row.created_at) }}</td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ row.group_name || '-' }}</td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div>{{ row.user_email || '-' }}</div>
+                      <div v-if="row.user_id" class="text-xs text-gray-400">UID {{ row.user_id }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div>{{ row.endpoint || '-' }}</div>
+                      <div class="text-xs text-gray-400">{{ row.provider || '-' }} / {{ row.model || '-' }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <span class="inline-flex rounded-md px-2 py-1 text-xs font-medium" :class="row.match_type === 'regex' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'">
+                        {{ row.match_type === 'regex' ? t('admin.riskControl.keyword.regex') : t('admin.riskControl.keyword.keyword') }}
+                      </span>
+                      <div class="mt-1 text-xs text-gray-400">{{ row.rule_name || '-' }} / {{ row.matched_text || '-' }}</div>
+                    </td>
+                    <td class="w-[360px] max-w-sm px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <span class="block truncate" :title="row.input_excerpt || '-'">{{ row.input_excerpt || '-' }}</span>
+                      <span class="mt-1 block truncate font-mono text-xs text-gray-400">{{ row.input_hash || '-' }}</span>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-else class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
               <thead class="bg-gray-50 dark:bg-dark-800">
                 <tr>
@@ -758,6 +828,132 @@
         </template>
       </BaseDialog>
 
+      <BaseDialog :show="keywordSettingsOpen" :title="t('admin.riskControl.keyword.settingsTitle')" width="wide" @close="keywordSettingsOpen = false">
+        <div class="space-y-5">
+          <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+            <div>
+              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.keyword.enabled') }}</p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.keyword.enabledHint') }}</p>
+            </div>
+            <Toggle v-model="keywordForm.enabled" />
+          </div>
+
+          <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t('admin.riskControl.keyword.keywords') }}</label>
+              <textarea v-model="keywordForm.keywords_text" class="input min-h-36 resize-y" :placeholder="t('admin.riskControl.keyword.keywordsPlaceholder')"></textarea>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.riskControl.keyword.whitelist') }}</label>
+              <textarea v-model="keywordForm.whitelist_text" class="input min-h-36 resize-y" :placeholder="t('admin.riskControl.keyword.whitelistPlaceholder')"></textarea>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.keyword.regexRules') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.keyword.regexRulesHint') }}</p>
+              </div>
+              <button type="button" class="btn btn-secondary inline-flex items-center gap-2" @click="addKeywordRegexRule">
+                <Icon name="plus" size="sm" />
+                {{ t('admin.riskControl.keyword.addRegex') }}
+              </button>
+            </div>
+            <div class="space-y-2">
+              <div v-for="(rule, index) in keywordForm.regex_rules" :key="`${rule.name}-${index}`" class="grid grid-cols-1 gap-2 rounded-lg bg-gray-50 p-3 dark:bg-dark-900/30 lg:grid-cols-[160px_minmax(0,1fr)_auto_auto] lg:items-center">
+                <input v-model.trim="rule.name" type="text" class="input" :placeholder="t('admin.riskControl.keyword.regexName')" />
+                <input v-model.trim="rule.pattern" type="text" class="input font-mono text-sm" :placeholder="t('admin.riskControl.keyword.regexPattern')" />
+                <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                  <Toggle v-model="rule.enabled" />
+                  {{ t('admin.riskControl.keyword.enabledShort') }}
+                </label>
+                <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-red-600 dark:hover:bg-dark-700" @click="removeKeywordRegexRule(index)">
+                  <Icon name="trash" size="sm" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/30">
+            <label class="input-label">{{ t('admin.riskControl.keyword.testInput') }}</label>
+            <textarea v-model="keywordTestText" class="input min-h-24 resize-y" :placeholder="t('admin.riskControl.keyword.testPlaceholder')"></textarea>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="keywordTesting" @click="testKeywordFilter">
+                <Icon name="beaker" size="sm" :class="keywordTesting ? 'animate-pulse' : ''" />
+                {{ t('admin.riskControl.keyword.test') }}
+              </button>
+              <span v-if="keywordTestResult" class="inline-flex rounded-md px-2 py-1 text-xs font-medium" :class="keywordTestResult.blocked ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'">
+                {{ keywordTestResult.blocked ? t('admin.riskControl.keyword.testBlocked') : t('admin.riskControl.keyword.testPassed') }}
+              </span>
+              <span v-if="keywordTestResult?.blocked" class="text-sm text-gray-500 dark:text-gray-400">
+                {{ keywordTestResult.match_type }} / {{ keywordTestResult.rule_name }} / {{ keywordTestResult.matched_text }}
+              </span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t('admin.riskControl.blockStatus') }}</label>
+              <input v-model.number="keywordForm.block_status" type="number" min="400" max="599" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.riskControl.hitRetentionDays') }}</label>
+              <input v-model.number="keywordForm.hit_retention_days" type="number" min="1" max="3650" class="input" />
+            </div>
+            <div class="lg:col-span-2">
+              <label class="input-label">{{ t('admin.riskControl.blockMessage') }}</label>
+              <input v-model.trim="keywordForm.block_message" type="text" class="input" />
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.keyword.groupScope') }}</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.keyword.groupScopeHint') }}</p>
+              </div>
+              <div class="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+                <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="keywordForm.all_groups ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-800 dark:text-white' : 'text-gray-500 dark:text-gray-400'" @click="keywordForm.all_groups = true">
+                  {{ t('admin.riskControl.allGroups') }}
+                </button>
+                <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="!keywordForm.all_groups ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-800 dark:text-white' : 'text-gray-500 dark:text-gray-400'" @click="keywordForm.all_groups = false">
+                  {{ t('admin.riskControl.selectedGroups') }}
+                </button>
+              </div>
+            </div>
+            <div v-if="!keywordForm.all_groups" class="grid max-h-60 grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
+              <button
+                v-for="group in groups"
+                :key="group.id"
+                type="button"
+                class="flex items-center justify-between rounded-lg border p-3 text-left transition-colors"
+                :class="isKeywordGroupSelected(group.id) ? 'border-primary-300 bg-primary-50 dark:border-primary-700 dark:bg-primary-900/20' : 'border-gray-100 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/60'"
+                @click="toggleKeywordGroup(group.id)"
+              >
+                <span class="min-w-0">
+                  <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ group.name }}</span>
+                  <span class="text-xs text-gray-400">{{ group.platform }}</span>
+                </span>
+                <Icon v-if="isKeywordGroupSelected(group.id)" name="check" size="sm" class="text-primary-500" />
+              </button>
+              <p v-if="groups.length === 0" class="text-sm text-gray-500 dark:text-gray-400">{{ keywordGroupStateText }}</p>
+            </div>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex justify-end gap-2">
+            <button type="button" class="btn btn-secondary" @click="keywordSettingsOpen = false">{{ t('common.cancel') }}</button>
+            <button type="button" class="btn btn-primary inline-flex items-center gap-2" :disabled="keywordSaving" @click="saveKeywordConfig">
+              <Icon v-if="keywordSaving" name="refresh" size="sm" class="animate-spin" />
+              <Icon v-else name="check" size="sm" />
+              {{ keywordSaving ? t('common.saving') : t('admin.riskControl.keyword.save') }}
+            </button>
+          </div>
+        </template>
+      </BaseDialog>
+
       <BaseDialog
         :show="inputDetailRow !== null"
         :title="t('admin.riskControl.inputDetailTitle')"
@@ -830,8 +1026,13 @@ import type {
   ContentModerationLog,
   ContentModerationRuntimeStatus,
   ContentModerationTestAuditResult,
+  KeywordFilterConfig,
+  KeywordFilterLog,
+  KeywordFilterRegexRule,
+  KeywordFilterTestResponse,
   ModerationMode,
   UpdateContentModerationConfig,
+  UpdateKeywordFilterConfig,
 } from '@/api/admin/riskControl'
 import type { AdminGroup, SelectOption } from '@/types'
 import { useAppStore } from '@/stores/app'
@@ -839,6 +1040,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDateTimeValue } from '@/utils/format'
 
 type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'retention'
+type RecordTab = 'keyword' | 'moderation'
 type WorkerSlotState = 'active' | 'idle' | 'disabled'
 type APIKeysWriteMode = 'append' | 'replace'
 type OverviewIcon = 'shield' | 'key' | 'users' | 'document'
@@ -862,23 +1064,32 @@ type ModerationScoreRow = {
 const maxModerationTestImages = 1
 const maxModerationTestImageSize = 8 * 1024 * 1024
 const maxVisibleApiKeyRows: number = 3
+const defaultContentModerationBlockMessage = '内容审计命中风险规则，请调整输入后重试'
+const defaultKeywordFilterBlockMessage = '输入内容命中关键词过滤规则，请调整后重试'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
 const loading = ref(true)
 const saving = ref(false)
+const keywordSaving = ref(false)
 const logsLoading = ref(false)
 const statusLoading = ref(false)
+const groupsLoading = ref(false)
+const groupsLoadFailed = ref(false)
 const apiKeyTesting = ref(false)
+const keywordTesting = ref(false)
 const hashActionLoading = ref(false)
 const unbanningUserID = ref<number | null>(null)
 const settingsOpen = ref(false)
+const keywordSettingsOpen = ref(false)
+const activeRecordTab = ref<RecordTab>('keyword')
 const activeSettingsTab = ref<SettingsTab>('basic')
 const groupSearch = ref('')
 const flaggedHashInput = ref('')
 const groups = ref<AdminGroup[]>([])
 const logs = ref<ContentModerationLog[]>([])
+const keywordLogs = ref<KeywordFilterLog[]>([])
 const status = ref<ContentModerationRuntimeStatus | null>(null)
 const testedApiKeyStatuses = ref<ContentModerationAPIKeyStatus[]>([])
 const pendingDeleteApiKeyHashes = ref<string[]>([])
@@ -886,6 +1097,8 @@ const apiKeyRowsExpanded = ref<boolean>(false)
 const moderationTestPrompt = ref('')
 const moderationTestImages = ref<string[]>([])
 const moderationTestResult = ref<ContentModerationTestAuditResult | null>(null)
+const keywordTestText = ref('')
+const keywordTestResult = ref<KeywordFilterTestResponse | null>(null)
 const inputDetailRow = ref<ContentModerationLog | null>(null)
 let statusTimer: number | null = null
 
@@ -911,7 +1124,7 @@ const configForm = reactive({
   worker_count: 4,
   queue_size: 32768,
   block_status: 403,
-  block_message: '内容审计命中风险规则，请调整输入后重试',
+  block_message: defaultContentModerationBlockMessage,
   email_on_hit: true,
   auto_ban_enabled: true,
   ban_threshold: 10,
@@ -919,6 +1132,18 @@ const configForm = reactive({
   hit_retention_days: 180,
   non_hit_retention_days: 3,
   pre_hash_check_enabled: false,
+})
+
+const keywordForm = reactive({
+  enabled: false,
+  all_groups: true,
+  group_ids: [] as number[],
+  keywords_text: '',
+  whitelist_text: '',
+  regex_rules: [] as KeywordFilterRegexRule[],
+  block_status: 403,
+  block_message: defaultKeywordFilterBlockMessage,
+  hit_retention_days: 180,
 })
 
 const pagination = reactive({
@@ -951,13 +1176,22 @@ const modeOptions = computed<SelectOption[]>(() => [
   { value: 'off', label: t('admin.riskControl.modeOff') },
 ])
 
-const resultOptions = computed<SelectOption[]>(() => [
-  { value: '', label: t('admin.riskControl.result.all') },
-  { value: 'hit', label: t('admin.riskControl.result.hit') },
-  { value: 'blocked', label: t('admin.riskControl.result.blocked') },
-  { value: 'pass', label: t('admin.riskControl.result.pass') },
-  { value: 'error', label: t('admin.riskControl.result.error') },
-])
+const resultOptions = computed<SelectOption[]>(() => {
+  if (activeRecordTab.value === 'keyword') {
+    return [
+      { value: '', label: t('admin.riskControl.keyword.resultAll') },
+      { value: 'keyword', label: t('admin.riskControl.keyword.keyword') },
+      { value: 'regex', label: t('admin.riskControl.keyword.regex') },
+    ]
+  }
+  return [
+    { value: '', label: t('admin.riskControl.result.all') },
+    { value: 'hit', label: t('admin.riskControl.result.hit') },
+    { value: 'blocked', label: t('admin.riskControl.result.blocked') },
+    { value: 'pass', label: t('admin.riskControl.result.pass') },
+    { value: 'error', label: t('admin.riskControl.result.error') },
+  ]
+})
 
 const endpointOptions = computed<SelectOption[]>(() => [
   { value: '', label: t('admin.riskControl.filters.allEndpoints') },
@@ -965,8 +1199,10 @@ const endpointOptions = computed<SelectOption[]>(() => [
   { value: '/v1/responses', label: '/v1/responses' },
   { value: '/v1/chat/completions', label: '/v1/chat/completions' },
   { value: '/v1beta/models', label: '/v1beta/models' },
-  { value: '/v1/images/generations', label: '/v1/images/generations' },
-  { value: '/v1/images/edits', label: '/v1/images/edits' },
+  ...(activeRecordTab.value === 'keyword' ? [] : [
+    { value: '/v1/images/generations', label: '/v1/images/generations' },
+    { value: '/v1/images/edits', label: '/v1/images/edits' },
+  ]),
 ])
 
 const groupFilterOptions = computed<SelectOption[]>(() => [
@@ -985,6 +1221,12 @@ const filteredGroups = computed(() => {
   return groups.value.filter((group) => {
     return group.name.toLowerCase().includes(keyword) || String(group.platform).toLowerCase().includes(keyword)
   })
+})
+
+const keywordGroupStateText = computed(() => {
+  if (groupsLoading.value) return t('common.loading')
+  if (groupsLoadFailed.value) return t('admin.riskControl.keyword.groupsLoadFailed')
+  return t('admin.riskControl.noGroups')
 })
 
 const inputApiKeyCount = computed(() => parseApiKeys(configForm.api_keys_text).length)
@@ -1187,7 +1429,7 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.worker_count = config.worker_count || 4
   configForm.queue_size = config.queue_size || 32768
   configForm.block_status = config.block_status || 403
-  configForm.block_message = config.block_message || '内容审计命中风险规则，请调整输入后重试'
+  configForm.block_message = config.block_message || defaultContentModerationBlockMessage
   configForm.email_on_hit = config.email_on_hit ?? true
   configForm.auto_ban_enabled = config.auto_ban_enabled ?? true
   configForm.ban_threshold = config.ban_threshold || 10
@@ -1197,16 +1439,44 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.pre_hash_check_enabled = config.pre_hash_check_enabled ?? false
 }
 
+function applyKeywordConfig(config: KeywordFilterConfig) {
+  keywordForm.enabled = config.enabled
+  keywordForm.all_groups = config.all_groups
+  keywordForm.group_ids = Array.isArray(config.group_ids) ? [...config.group_ids] : []
+  keywordForm.keywords_text = (config.keywords || []).join('\n')
+  keywordForm.whitelist_text = (config.whitelist || []).join('\n')
+  keywordForm.regex_rules = Array.isArray(config.regex_rules) ? config.regex_rules.map((rule) => ({ ...rule })) : []
+  keywordForm.block_status = config.block_status || 403
+  keywordForm.block_message = config.block_message || defaultKeywordFilterBlockMessage
+  keywordForm.hit_retention_days = config.hit_retention_days || 180
+}
+
+async function loadGroups(options: { silent?: boolean } = {}) {
+  groupsLoading.value = true
+  groupsLoadFailed.value = false
+  try {
+    groups.value = await adminAPI.groups.getAll()
+  } catch (err: unknown) {
+    groupsLoadFailed.value = true
+    if (!options.silent) {
+      appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.keyword.groupsLoadFailed')))
+    }
+  } finally {
+    groupsLoading.value = false
+  }
+}
+
 async function loadAll() {
   loading.value = true
   try {
-    const [config, groupItems, runtimeStatus] = await Promise.all([
+    const [config, runtimeStatus] = await Promise.all([
       adminAPI.riskControl.getConfig(),
-      adminAPI.groups.getAll(),
       adminAPI.riskControl.getStatus(),
     ])
+    await loadGroups({ silent: true })
     applyConfig(config)
-    groups.value = groupItems
+    const keywordConfig = await adminAPI.riskControl.getKeywordFilterConfig()
+    applyKeywordConfig(keywordConfig)
     status.value = runtimeStatus
     if (Array.isArray(runtimeStatus.api_key_statuses)) {
       configForm.api_key_statuses = [...runtimeStatus.api_key_statuses]
@@ -1256,7 +1526,7 @@ async function saveConfig() {
       worker_count: Number(configForm.worker_count) || 4,
       queue_size: Number(configForm.queue_size) || 32768,
       block_status: Number(configForm.block_status) || 403,
-      block_message: configForm.block_message || '内容审计命中风险规则，请调整输入后重试',
+      block_message: configForm.block_message || defaultContentModerationBlockMessage,
       email_on_hit: configForm.email_on_hit,
       auto_ban_enabled: configForm.auto_ban_enabled,
       ban_threshold: Number(configForm.ban_threshold) || 10,
@@ -1304,16 +1574,86 @@ async function loadLogs() {
       from: normalizeDateTimeLocal(filters.from),
       to: normalizeDateTimeLocal(filters.to),
     }
-    const result = await adminAPI.riskControl.listLogs(params)
-    logs.value = result.items
+    const result = activeRecordTab.value === 'keyword'
+      ? await adminAPI.riskControl.listKeywordFilterLogs({
+        page: params.page,
+        page_size: params.page_size,
+        match_type: filters.result || undefined,
+        group_id: params.group_id,
+        endpoint: params.endpoint,
+        search: params.search,
+        from: params.from,
+        to: params.to,
+      })
+      : await adminAPI.riskControl.listLogs(params)
+    if (activeRecordTab.value === 'keyword') {
+      keywordLogs.value = result.items as KeywordFilterLog[]
+    } else {
+      logs.value = result.items as ContentModerationLog[]
+    }
     pagination.total = result.total
     pagination.page = result.page
     pagination.page_size = result.page_size
     pagination.pages = result.pages
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.logsFailed')))
+    const fallback = activeRecordTab.value === 'keyword'
+      ? t('admin.riskControl.keyword.logsFailed')
+      : t('admin.riskControl.logsFailed')
+    appStore.showError(extractApiErrorMessage(err, fallback))
   } finally {
     logsLoading.value = false
+  }
+}
+
+async function saveKeywordConfig() {
+  keywordSaving.value = true
+  try {
+    const payload: UpdateKeywordFilterConfig = {
+      enabled: keywordForm.enabled,
+      all_groups: keywordForm.all_groups,
+      group_ids: keywordForm.all_groups ? [] : [...keywordForm.group_ids],
+      keywords: parseLines(keywordForm.keywords_text),
+      whitelist: parseLines(keywordForm.whitelist_text),
+      regex_rules: keywordForm.regex_rules.map((rule) => ({ ...rule })),
+      block_status: Number(keywordForm.block_status) || 403,
+      block_message: keywordForm.block_message || defaultKeywordFilterBlockMessage,
+      hit_retention_days: Number(keywordForm.hit_retention_days) || 180,
+    }
+    const updated = await adminAPI.riskControl.updateKeywordFilterConfig(payload)
+    applyKeywordConfig(updated)
+    keywordSettingsOpen.value = false
+    appStore.showSuccess(t('admin.riskControl.keyword.saved'))
+    if (activeRecordTab.value === 'keyword') {
+      await loadLogs()
+    }
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.keyword.saveFailed')))
+  } finally {
+    keywordSaving.value = false
+  }
+}
+
+async function testKeywordFilter() {
+  keywordTesting.value = true
+  try {
+    keywordTestResult.value = await adminAPI.riskControl.testKeywordFilter({
+      text: keywordTestText.value,
+      config: {
+        enabled: keywordForm.enabled,
+        all_groups: keywordForm.all_groups,
+        group_ids: keywordForm.all_groups ? [] : [...keywordForm.group_ids],
+        keywords: parseLines(keywordForm.keywords_text),
+        whitelist: parseLines(keywordForm.whitelist_text),
+        regex_rules: keywordForm.regex_rules.map((rule) => ({ ...rule })),
+        block_status: Number(keywordForm.block_status) || 403,
+        block_message: keywordForm.block_message || defaultKeywordFilterBlockMessage,
+        hit_retention_days: Number(keywordForm.hit_retention_days) || 180,
+      },
+    })
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.keyword.testFailed')))
+  } finally {
+    keywordTesting.value = false
   }
 }
 
@@ -1386,9 +1726,45 @@ function openSettings() {
   settingsOpen.value = true
 }
 
+function openKeywordSettings() {
+  keywordSettingsOpen.value = true
+  if (groups.value.length === 0 && !groupsLoading.value) {
+    void loadGroups()
+  }
+}
+
+function switchRecordTab(tab: RecordTab) {
+  if (activeRecordTab.value === tab) return
+  activeRecordTab.value = tab
+  filters.result = ''
+  pagination.page = 1
+  void loadLogs()
+}
+
 function reloadLogsFromFirstPage() {
   pagination.page = 1
   void loadLogs()
+}
+
+function addKeywordRegexRule() {
+  keywordForm.regex_rules.push({ name: '', pattern: '', enabled: false })
+}
+
+function removeKeywordRegexRule(index: number) {
+  keywordForm.regex_rules.splice(index, 1)
+}
+
+function toggleKeywordGroup(groupID: number) {
+  const index = keywordForm.group_ids.indexOf(groupID)
+  if (index >= 0) {
+    keywordForm.group_ids.splice(index, 1)
+  } else {
+    keywordForm.group_ids.push(groupID)
+  }
+}
+
+function isKeywordGroupSelected(groupID: number): boolean {
+  return keywordForm.group_ids.includes(groupID)
 }
 
 function onPageChange(page: number) {
@@ -1661,6 +2037,13 @@ function apiKeyStatusMeta(row: ContentModerationAPIKeyStatus): string {
 }
 
 function parseApiKeys(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter((item, index, arr) => item && arr.indexOf(item) === index)
+}
+
+function parseLines(value: string): string[] {
   return value
     .split(/\r?\n/)
     .map((item) => item.trim())

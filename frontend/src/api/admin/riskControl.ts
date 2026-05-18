@@ -187,6 +187,95 @@ export interface ClearFlaggedHashesResponse {
   deleted: number
 }
 
+export interface KeywordFilterRegexRule {
+  name: string
+  pattern: string
+  enabled: boolean
+  builtin?: boolean
+}
+
+export interface KeywordFilterConfig {
+  enabled: boolean
+  all_groups: boolean
+  group_ids: number[]
+  keywords: string[]
+  whitelist: string[]
+  regex_rules: KeywordFilterRegexRule[]
+  block_status: number
+  block_message: string
+  hit_retention_days: number
+}
+
+export interface UpdateKeywordFilterConfig {
+  enabled?: boolean
+  all_groups?: boolean
+  group_ids?: number[]
+  keywords?: string[]
+  whitelist?: string[]
+  regex_rules?: KeywordFilterRegexRule[]
+  block_status?: number
+  block_message?: string
+  hit_retention_days?: number
+}
+
+export interface KeywordFilterLog {
+  id: number
+  request_id: string
+  user_id: number | null
+  user_email: string
+  api_key_id: number | null
+  api_key_name: string
+  group_id: number | null
+  group_name: string
+  endpoint: string
+  provider: string
+  model: string
+  protocol: string
+  match_type: 'keyword' | 'regex' | string
+  rule_name: string
+  matched_text: string
+  input_excerpt: string
+  input_hash: string
+  action: string
+  block_status: number
+  user_status: string
+  created_at: string
+}
+
+export interface ListKeywordFilterLogsParams {
+  page?: number
+  page_size?: number
+  match_type?: string
+  group_id?: number
+  endpoint?: string
+  search?: string
+  from?: string
+  to?: string
+}
+
+export interface KeywordFilterLogsResponse {
+  items: KeywordFilterLog[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
+export interface KeywordFilterTestResponse {
+  blocked: boolean
+  match_type: string
+  rule_name: string
+  matched_text: string
+  normalized_text: string
+  regex_text: string
+  segments: string[]
+}
+
+export type KeywordFilterTestPayload = UpdateKeywordFilterConfig & {
+  text: string
+  config?: UpdateKeywordFilterConfig
+}
+
 export async function getConfig(): Promise<ContentModerationConfig> {
   const { data } = await apiClient.get<ContentModerationConfig>('/admin/risk-control/config')
   return data
@@ -239,6 +328,33 @@ export async function clearFlaggedHashes(): Promise<ClearFlaggedHashesResponse> 
   return data
 }
 
+export async function getKeywordFilterConfig(): Promise<KeywordFilterConfig> {
+  const { data } = await apiClient.get<KeywordFilterConfig>('/admin/risk-control/keyword-filter/config')
+  return data
+}
+
+export async function updateKeywordFilterConfig(
+  payload: UpdateKeywordFilterConfig
+): Promise<KeywordFilterConfig> {
+  const { data } = await apiClient.put<KeywordFilterConfig>('/admin/risk-control/keyword-filter/config', payload)
+  return data
+}
+
+export async function testKeywordFilter(payload: string | KeywordFilterTestPayload): Promise<KeywordFilterTestResponse> {
+  const body = typeof payload === 'string' ? { text: payload } : payload
+  const { data } = await apiClient.post<KeywordFilterTestResponse>('/admin/risk-control/keyword-filter/test', body)
+  return data
+}
+
+export async function listKeywordFilterLogs(
+  params: ListKeywordFilterLogsParams = {}
+): Promise<KeywordFilterLogsResponse> {
+  const { data } = await apiClient.get<KeywordFilterLogsResponse>('/admin/risk-control/keyword-filter/logs', {
+    params,
+  })
+  return data
+}
+
 export const riskControlAPI = {
   getConfig,
   updateConfig,
@@ -248,6 +364,10 @@ export const riskControlAPI = {
   unbanUser,
   deleteFlaggedHash,
   clearFlaggedHashes,
+  getKeywordFilterConfig,
+  updateKeywordFilterConfig,
+  testKeywordFilter,
+  listKeywordFilterLogs,
 }
 
 export default riskControlAPI

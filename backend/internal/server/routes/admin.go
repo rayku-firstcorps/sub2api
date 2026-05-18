@@ -94,6 +94,7 @@ func RegisterAdminRoutes(
 
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
+		registerKeywordFilterRoutes(admin, h)
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
@@ -111,6 +112,16 @@ func registerContentModerationRoutes(admin *gin.RouterGroup, h *handler.Handlers
 		risk.POST("/users/:user_id/unban", h.Admin.ContentModeration.UnbanUser)
 		risk.DELETE("/hashes", h.Admin.ContentModeration.DeleteFlaggedHash)
 		risk.DELETE("/hashes/all", h.Admin.ContentModeration.ClearFlaggedHashes)
+	}
+}
+
+func registerKeywordFilterRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	keyword := admin.Group("/risk-control/keyword-filter")
+	{
+		keyword.GET("/config", h.Admin.KeywordFilter.GetConfig)
+		keyword.PUT("/config", h.Admin.KeywordFilter.UpdateConfig)
+		keyword.POST("/test", h.Admin.KeywordFilter.Test)
+		keyword.GET("/logs", h.Admin.KeywordFilter.ListLogs)
 	}
 }
 

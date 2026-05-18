@@ -96,6 +96,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
+	if decision := h.checkKeywordFilter(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && decision.Blocked {
+		h.responsesErrorResponse(c, keywordFilterStatus(decision), keywordFilterErrorCode(decision), decision.Message)
+		return
+	}
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && decision.Blocked {
 		h.responsesErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
