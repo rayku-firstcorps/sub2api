@@ -78,6 +78,9 @@ func buildToolNameMaps(tools []gjson.Result) map[string]string {
 }
 
 func convertTools(tools []gjson.Result) []ToolSpecWrapper {
+	if len(tools) == 0 {
+		return nil
+	}
 	result := make([]ToolSpecWrapper, 0, len(tools))
 	for _, tool := range tools {
 		if isIgnoredKiroTool(tool) {
@@ -88,9 +91,6 @@ func convertTools(tools []gjson.Result) []ToolSpecWrapper {
 			continue
 		}
 		result = append(result, spec)
-	}
-	if len(result) == 0 {
-		return []ToolSpecWrapper{placeholderToolSpec()}
 	}
 	return result
 }
@@ -120,19 +120,6 @@ func convertTool(tool gjson.Result) (ToolSpecWrapper, bool) {
 			InputSchema: InputSchema{JSON: schema},
 		},
 	}, true
-}
-
-func placeholderToolSpec() ToolSpecWrapper {
-	return ToolSpecWrapper{
-		ToolSpecification: ToolSpecification{
-			Name:        "no_tool_available",
-			Description: "This is a placeholder tool when no other tools are available. It does nothing.",
-			InputSchema: InputSchema{JSON: map[string]any{
-				"type":       "object",
-				"properties": map[string]any{},
-			}},
-		},
-	}
 }
 
 func isIgnoredKiroTool(tool gjson.Result) bool {
@@ -664,8 +651,11 @@ func buildThinkingPrefix(thinkingType string, thinkingBudget int, thinkingEffort
 	switch strings.ToLower(strings.TrimSpace(thinkingType)) {
 	case "enabled":
 		budget := thinkingBudget
-		if budget < ThinkingMinBudget {
+		if budget <= 0 {
 			budget = ThinkingDefaultBudget
+		}
+		if budget < ThinkingMinBudget {
+			budget = ThinkingMinBudget
 		}
 		if budget > ThinkingMaxBudget {
 			budget = ThinkingMaxBudget
@@ -763,6 +753,8 @@ func contentAsBlocks(content any) []any {
 func buildUserTurn(content string, images []Image, toolResults []ToolResult, tools []ToolSpecWrapper, kiroModel string) Turn {
 	if strings.TrimSpace(content) == "" && len(toolResults) > 0 {
 		content = "Tool results provided."
+	} else if strings.TrimSpace(content) == "" {
+		content = "Continue"
 	}
 	msg := &UserInputMessage{
 		Content: content,

@@ -77,3 +77,19 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
 	}
 }
+
+func TestGatewayRoutesClaudeKiroOAuthPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	for _, path := range []string{
+		"/claude-kiro-oauth/v1/messages",
+		"/claude-kiro-oauth/v1/messages/count_tokens",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit Kiro Claude handler", path)
+	}
+}

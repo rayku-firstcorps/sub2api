@@ -8857,6 +8857,13 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	// Pre-filter: strip empty text blocks to prevent upstream 400.
 	body = StripEmptyTextBlocks(body)
 
+	if account.Platform == PlatformKiro {
+		c.JSON(http.StatusOK, gin.H{
+			"input_tokens": estimateKiroInputTokens(body),
+		})
+		return nil
+	}
+
 	isClaudeCodeCT := IsClaudeCodeClient(ctx) || isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCodeCT
 

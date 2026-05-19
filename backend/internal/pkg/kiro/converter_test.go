@@ -32,7 +32,7 @@ func TestConvertRequestFiltersWebSearchTool(t *testing.T) {
 	require.NotContains(t, string(data), `"web_search"`)
 }
 
-func TestConvertRequestUsesPlaceholderWhenOnlyWebSearchTool(t *testing.T) {
+func TestConvertRequestOmitsToolsWhenOnlyWebSearchTool(t *testing.T) {
 	body := []byte(`{
 		"model": "claude-sonnet-4-5",
 		"messages": [{"role":"user","content":"hi"}],
@@ -46,12 +46,10 @@ func TestConvertRequestUsesPlaceholderWhenOnlyWebSearchTool(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, req.ConversationState.CurrentMessage)
 	ctx := req.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext
-	require.NotNil(t, ctx)
-	require.Len(t, ctx.Tools, 1)
-	require.Equal(t, "no_tool_available", ctx.Tools[0].ToolSpecification.Name)
+	require.Nil(t, ctx)
 }
 
-func TestConvertRequestUsesPlaceholderWhenNoTools(t *testing.T) {
+func TestConvertRequestOmitsToolsWhenNoTools(t *testing.T) {
 	body := []byte(`{
 		"model": "claude-sonnet-4-5",
 		"messages": [{"role":"user","content":"hi"}]
@@ -62,12 +60,10 @@ func TestConvertRequestUsesPlaceholderWhenNoTools(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, req.ConversationState.CurrentMessage)
 	ctx := req.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext
-	require.NotNil(t, ctx)
-	require.Len(t, ctx.Tools, 1)
-	require.Equal(t, "no_tool_available", ctx.Tools[0].ToolSpecification.Name)
+	require.Nil(t, ctx)
 }
 
-func TestConvertRequestUsesPlaceholderWhenToolDescriptionsAreEmpty(t *testing.T) {
+func TestConvertRequestOmitsToolsWhenToolDescriptionsAreEmpty(t *testing.T) {
 	body := []byte(`{
 		"model": "claude-sonnet-4-5",
 		"messages": [{"role":"user","content":"hi"}],
@@ -82,9 +78,7 @@ func TestConvertRequestUsesPlaceholderWhenToolDescriptionsAreEmpty(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, req.ConversationState.CurrentMessage)
 	ctx := req.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext
-	require.NotNil(t, ctx)
-	require.Len(t, ctx.Tools, 1)
-	require.Equal(t, "no_tool_available", ctx.Tools[0].ToolSpecification.Name)
+	require.Nil(t, ctx)
 }
 
 func TestConvertRequestAllowsToolWithoutInputSchema(t *testing.T) {
@@ -248,4 +242,20 @@ func TestConvertRequestSupportsCustomToolShape(t *testing.T) {
 	schema := tool.InputSchema.JSON.(map[string]any)
 	require.Equal(t, "object", schema["type"])
 	require.Contains(t, schema["properties"], "cmd")
+}
+
+func TestConvertRequestClampsSmallThinkingBudgetToMinimum(t *testing.T) {
+	body := []byte(`{
+		"model": "claude-sonnet-4-5",
+		"thinking": {"type":"enabled","budget_tokens":512},
+		"system": "system prompt",
+		"messages": [{"role":"user","content":"hi"}]
+	}`)
+
+	req, err := ConvertRequest(body, "claude-sonnet-4.5", "")
+
+	require.NoError(t, err)
+	current := req.ConversationState.CurrentMessage.UserInputMessage
+	require.Contains(t, current.Content, "<max_thinking_length>1024</max_thinking_length>")
+	require.Contains(t, current.Content, "system prompt")
 }

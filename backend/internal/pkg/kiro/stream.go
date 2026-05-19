@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 type EventType int
@@ -120,19 +121,21 @@ type AnthropicSSEEvent struct {
 }
 
 type StreamConverter struct {
-	toolNameMap   map[string]string
-	nextIdx       int
-	contentIdx    int
-	toolIdx       int
-	thinkingIdx   int
-	inThinking    bool
-	inContent     bool
-	inTool        bool
-	inputAccum    string
-	currentToolID string
-	outputTokens  int
-	stopped       bool
-	emittedTool   bool
+	toolNameMap    map[string]string
+	nextIdx        int
+	contentIdx     int
+	toolIdx        int
+	thinkingIdx    int
+	inThinking     bool
+	inContent      bool
+	inTool         bool
+	inputAccum     string
+	currentToolID  string
+	outputTokens   int
+	stopped        bool
+	emittedTool    bool
+	hasVisibleText bool
+	hasThinking    bool
 }
 
 func NewStreamConverter(toolNameMap map[string]string) *StreamConverter {
@@ -231,6 +234,11 @@ func (c *StreamConverter) Finish(stopReason string) []AnthropicSSEEvent {
 	c.closeContent(&events)
 	c.closeThinking(&events)
 	c.closeTool(&events)
+	if stopReason == "end_turn" && c.hasThinking && !c.hasVisibleText && !c.emittedTool {
+		c.appendParsedContentBlock(&events, ParsedContentBlock{Type: "text", Text: " "})
+		c.closeContent(&events)
+		stopReason = "max_tokens"
+	}
 	events = append(events, AnthropicSSEEvent{
 		Event: "message_delta",
 		Data:  fmt.Sprintf(`{"type":"message_delta","delta":{"stop_reason":"%s","stop_sequence":null},"usage":{"output_tokens":%d}}`, stopReason, c.outputTokens),
@@ -279,6 +287,7 @@ func (c *StreamConverter) appendParsedContentBlock(events *[]AnthropicSSEEvent, 
 		if block.Thinking == "" {
 			return
 		}
+		c.hasThinking = true
 		c.closeContent(events)
 		c.closeTool(events)
 		c.thinkingIdx = c.nextIdx
@@ -316,6 +325,9 @@ func (c *StreamConverter) appendParsedContentBlock(events *[]AnthropicSSEEvent, 
 	default:
 		if block.Text == "" {
 			return
+		}
+		if strings.TrimSpace(block.Text) != "" {
+			c.hasVisibleText = true
 		}
 		if !c.inContent {
 			c.closeThinking(events)

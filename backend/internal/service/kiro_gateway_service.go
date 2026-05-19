@@ -27,6 +27,7 @@ type KiroGatewayService struct {
 	tokenProvider *KiroTokenProvider
 	httpUpstream  HTTPUpstream
 	promptCache   KiroPromptCache
+	rateLimit     *RateLimitService
 }
 
 func NewKiroGatewayService(
@@ -34,12 +35,14 @@ func NewKiroGatewayService(
 	tokenProvider *KiroTokenProvider,
 	httpUpstream HTTPUpstream,
 	promptCache KiroPromptCache,
+	rateLimit *RateLimitService,
 ) *KiroGatewayService {
 	return &KiroGatewayService{
 		accountRepo:   accountRepo,
 		tokenProvider: tokenProvider,
 		httpUpstream:  httpUpstream,
 		promptCache:   promptCache,
+		rateLimit:     rateLimit,
 	}
 }
 
@@ -108,9 +111,16 @@ func (s *KiroGatewayService) Forward(ctx context.Context, c *gin.Context, accoun
 			"status", resp.StatusCode,
 			"body", string(respBody),
 		)
-		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		if s.rateLimit != nil {
+			s.rateLimit.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		}
+		if resp.StatusCode == http.StatusUnauthorized ||
+			resp.StatusCode == http.StatusForbidden ||
+			resp.StatusCode == http.StatusTooManyRequests {
 			return nil, &UpstreamFailoverError{
-				StatusCode: resp.StatusCode,
+				StatusCode:      resp.StatusCode,
+				ResponseBody:    respBody,
+				ResponseHeaders: resp.Header.Clone(),
 			}
 		}
 		return nil, s.writeError(c, resp.StatusCode, "api_error",
@@ -707,6 +717,8 @@ type kiroMessageCollector struct {
 	currentToolID string
 	hasPayload    bool
 	hasTool       bool
+	hasText       bool
+	hasThinking   bool
 	sawStop       bool
 	outputText    strings.Builder
 	toolInputText strings.Builder
@@ -778,6 +790,7 @@ func (c *kiroMessageCollector) addParsedContentBlocks(blocks []kiro.ParsedConten
 				continue
 			}
 			c.hasPayload = true
+			c.hasThinking = true
 			c.outputText.WriteString(block.Thinking)
 			c.blocks = append(c.blocks, gin.H{"type": "thinking", "thinking": block.Thinking})
 			c.currentTool = nil
@@ -802,6 +815,9 @@ func (c *kiroMessageCollector) addParsedContentBlocks(blocks []kiro.ParsedConten
 				continue
 			}
 			c.hasPayload = true
+			if strings.TrimSpace(block.Text) != "" {
+				c.hasText = true
+			}
 			c.outputText.WriteString(block.Text)
 			if len(c.blocks) > 0 {
 				if lastText, ok := c.blocks[len(c.blocks)-1]["text"].(string); ok && c.blocks[len(c.blocks)-1]["type"] == "text" {
@@ -817,12 +833,18 @@ func (c *kiroMessageCollector) addParsedContentBlocks(blocks []kiro.ParsedConten
 }
 
 func (c *kiroMessageCollector) contentBlocks() []gin.H {
+	if c.hasThinking && !c.hasText && !c.hasTool {
+		return append(c.blocks, gin.H{"type": "text", "text": " "})
+	}
 	return c.blocks
 }
 
 func (c *kiroMessageCollector) stopReason() string {
 	if c.hasTool {
 		return "tool_use"
+	}
+	if c.hasThinking && !c.hasText {
+		return "max_tokens"
 	}
 	return "end_turn"
 }

@@ -154,7 +154,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	internal500CounterCache := repository.NewInternal500CounterCache(redisClient)
 	antigravityGatewayService := service.NewAntigravityGatewayService(accountRepository, gatewayCache, schedulerSnapshotService, antigravityTokenProvider, rateLimitService, httpUpstream, settingService, internal500CounterCache)
 	kiroPromptCache := repository.NewKiroPromptCache(redisClient)
-	kiroGatewayService := service.NewKiroGatewayService(accountRepository, kiroTokenProvider, httpUpstream, kiroPromptCache)
+	kiroGatewayService := service.NewKiroGatewayService(accountRepository, kiroTokenProvider, httpUpstream, kiroPromptCache, rateLimitService)
 	accountTestService := service.NewAccountTestService(accountRepository, geminiTokenProvider, claudeTokenProvider, antigravityGatewayService, kiroTokenProvider, httpUpstream, configConfig, tlsFingerprintProfileService)
 	crsSyncService := service.NewCRSSyncService(accountRepository, proxyRepository, oAuthService, openAIOAuthService, geminiOAuthService, configConfig)
 	accountHandler := admin.NewAccountHandler(adminService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, rateLimitService, accountUsageService, accountTestService, concurrencyService, crsSyncService, sessionLimitCache, rpmCache, compositeTokenCacheInvalidator)

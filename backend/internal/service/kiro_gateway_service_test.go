@@ -207,6 +207,36 @@ func TestKiroMessageCollectorParsesThinkingAndBracketToolCalls(t *testing.T) {
 	require.Equal(t, "tool_use", collector.stopReason())
 }
 
+func TestKiroMessageCollectorThinkingOnlyAddsTextBlockAndMaxTokens(t *testing.T) {
+	collector := newKiroMessageCollector(nil)
+
+	collector.add(kiro.StreamEvent{Content: "<thinking>\nplan\n</thinking>"})
+
+	blocks := collector.contentBlocks()
+	require.Len(t, blocks, 2)
+	require.Equal(t, "thinking", blocks[0]["type"])
+	require.Equal(t, "text", blocks[1]["type"])
+	require.Equal(t, " ", blocks[1]["text"])
+	require.Equal(t, "max_tokens", collector.stopReason())
+}
+
+func TestKiroGatewayStreamResponseThinkingOnlyAddsTextAndMaxTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	svc := &KiroGatewayService{}
+
+	upstream := strings.NewReader("{\"content\":\"<thinking>plan</thinking>\"}{\"stop\":true}")
+	result, err := svc.streamResponse(c, upstream, nil, "claude-opus-4-6", ClaudeUsage{InputTokens: 9}, time.Now())
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := w.Body.String()
+	require.Contains(t, body, `"type":"thinking_delta"`)
+	require.Contains(t, body, `"text":" "`)
+	require.Contains(t, body, `"stop_reason":"max_tokens"`)
+}
+
 func TestKiroPseudoCacheBreakpointsIncludeToolsSystemAndMessages(t *testing.T) {
 	body := []byte(`{
 		"tools": [{
@@ -357,4 +387,36 @@ func TestKiroNonStreamResponseIncludesPseudoCacheUsage(t *testing.T) {
 	require.Equal(t, int64(7), gjson.GetBytes(w.Body.Bytes(), "usage.cache_read_input_tokens").Int())
 	require.Equal(t, int64(5), gjson.GetBytes(w.Body.Bytes(), "usage.cache_creation_input_tokens").Int())
 	require.Equal(t, int64(5), gjson.GetBytes(w.Body.Bytes(), "usage.cache_creation.ephemeral_5m_input_tokens").Int())
+}
+
+func TestKiroGatewayNonStreamResponseThinkingOnlyUsesMaxTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	svc := &KiroGatewayService{}
+
+	result, err := svc.nonStreamResponse(c, strings.NewReader("{\"content\":\"<thinking>plan</thinking>\"}{\"stop\":true}"), nil, "claude-opus-4-6", ClaudeUsage{InputTokens: 9})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "max_tokens", gjson.GetBytes(w.Body.Bytes(), "stop_reason").String())
+	require.Equal(t, "thinking", gjson.GetBytes(w.Body.Bytes(), "content.0.type").String())
+	require.Equal(t, "text", gjson.GetBytes(w.Body.Bytes(), "content.1.type").String())
+	require.Equal(t, " ", gjson.GetBytes(w.Body.Bytes(), "content.1.text").String())
+}
+
+func TestGatewayServiceForwardCountTokensKiroUsesLocalEstimate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	svc := &GatewayService{}
+	body := []byte(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hello"}]}`)
+	parsed := &ParsedRequest{Model: "claude-sonnet-4-5", Body: body}
+	account := &Account{ID: 1, Platform: PlatformKiro, Type: AccountTypeOAuth}
+
+	err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Greater(t, gjson.GetBytes(w.Body.Bytes(), "input_tokens").Int(), int64(0))
 }
