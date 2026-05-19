@@ -718,15 +718,7 @@ func newKiroMessageCollector(toolNameMap map[string]string) *kiroMessageCollecto
 
 func (c *kiroMessageCollector) add(evt kiro.StreamEvent) {
 	if evt.Content != "" {
-		c.hasPayload = true
-		c.outputText.WriteString(evt.Content)
-		if len(c.blocks) > 0 {
-			if lastText, ok := c.blocks[len(c.blocks)-1]["text"].(string); ok && c.blocks[len(c.blocks)-1]["type"] == "text" {
-				c.blocks[len(c.blocks)-1]["text"] = lastText + evt.Content
-				return
-			}
-		}
-		c.blocks = append(c.blocks, gin.H{"type": "text", "text": evt.Content})
+		c.addParsedContentBlocks(kiro.ParseKiroContentBlocks(evt.Content, c.toolNameMap))
 		return
 	}
 
@@ -775,6 +767,52 @@ func (c *kiroMessageCollector) appendToolInput(partial string) {
 	var parsed any
 	if err := json.Unmarshal([]byte(c.toolInputText.String()), &parsed); err == nil && parsed != nil {
 		(*c.currentTool)["input"] = parsed
+	}
+}
+
+func (c *kiroMessageCollector) addParsedContentBlocks(blocks []kiro.ParsedContentBlock) {
+	for _, block := range blocks {
+		switch block.Type {
+		case "thinking":
+			if block.Thinking == "" {
+				continue
+			}
+			c.hasPayload = true
+			c.outputText.WriteString(block.Thinking)
+			c.blocks = append(c.blocks, gin.H{"type": "thinking", "thinking": block.Thinking})
+			c.currentTool = nil
+			c.currentToolID = ""
+		case "tool_use":
+			c.hasPayload = true
+			c.hasTool = true
+			c.toolInputText.Reset()
+			if raw, err := json.Marshal(block.ToolInput); err == nil {
+				c.toolInputText.WriteString(string(raw))
+			}
+			c.blocks = append(c.blocks, gin.H{
+				"type":  "tool_use",
+				"id":    block.ToolUseID,
+				"name":  block.ToolName,
+				"input": block.ToolInput,
+			})
+			c.currentTool = nil
+			c.currentToolID = ""
+		default:
+			if block.Text == "" {
+				continue
+			}
+			c.hasPayload = true
+			c.outputText.WriteString(block.Text)
+			if len(c.blocks) > 0 {
+				if lastText, ok := c.blocks[len(c.blocks)-1]["text"].(string); ok && c.blocks[len(c.blocks)-1]["type"] == "text" {
+					c.blocks[len(c.blocks)-1]["text"] = lastText + block.Text
+					continue
+				}
+			}
+			c.blocks = append(c.blocks, gin.H{"type": "text", "text": block.Text})
+			c.currentTool = nil
+			c.currentToolID = ""
+		}
 	}
 }
 

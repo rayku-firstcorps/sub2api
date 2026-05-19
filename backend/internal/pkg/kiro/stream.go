@@ -132,6 +132,7 @@ type StreamConverter struct {
 	currentToolID string
 	outputTokens  int
 	stopped       bool
+	emittedTool   bool
 }
 
 func NewStreamConverter(toolNameMap map[string]string) *StreamConverter {
@@ -160,21 +161,9 @@ func (c *StreamConverter) Convert(evt StreamEvent) []AnthropicSSEEvent {
 	}
 
 	if evt.Content != "" {
-		if !c.inContent {
-			c.closeThinking(&events)
-			c.closeTool(&events)
-			c.contentIdx = c.nextIdx
-			c.nextIdx++
-			c.inContent = true
-			events = append(events, AnthropicSSEEvent{
-				Event: "content_block_start",
-				Data:  fmt.Sprintf(`{"type":"content_block_start","index":%d,"content_block":{"type":"text","text":""}}`, c.contentIdx),
-			})
+		for _, block := range ParseKiroContentBlocks(evt.Content, c.toolNameMap) {
+			c.appendParsedContentBlock(&events, block)
 		}
-		events = append(events, AnthropicSSEEvent{
-			Event: "content_block_delta",
-			Data:  fmt.Sprintf(`{"type":"content_block_delta","index":%d,"delta":{"type":"text_delta","text":%s}}`, c.contentIdx, jsonStr(evt.Content)),
-		})
 	}
 
 	if evt.Name != "" && evt.ToolUseID != "" {
@@ -185,6 +174,7 @@ func (c *StreamConverter) Convert(evt StreamEvent) []AnthropicSSEEvent {
 			c.toolIdx = c.nextIdx
 			c.nextIdx++
 			c.inTool = true
+			c.emittedTool = true
 			c.currentToolID = evt.ToolUseID
 			c.inputAccum = ""
 			toolName := RestoreToolName(evt.Name, c.toolNameMap)
@@ -233,6 +223,9 @@ func (c *StreamConverter) Finish(stopReason string) []AnthropicSSEEvent {
 	if stopReason == "" {
 		stopReason = "end_turn"
 	}
+	if stopReason == "end_turn" && c.emittedTool {
+		stopReason = "tool_use"
+	}
 
 	var events []AnthropicSSEEvent
 	c.closeContent(&events)
@@ -280,8 +273,70 @@ func (c *StreamConverter) closeTool(events *[]AnthropicSSEEvent) {
 	}
 }
 
+func (c *StreamConverter) appendParsedContentBlock(events *[]AnthropicSSEEvent, block ParsedContentBlock) {
+	switch block.Type {
+	case "thinking":
+		if block.Thinking == "" {
+			return
+		}
+		c.closeContent(events)
+		c.closeTool(events)
+		c.thinkingIdx = c.nextIdx
+		c.nextIdx++
+		c.inThinking = true
+		*events = append(*events, AnthropicSSEEvent{
+			Event: "content_block_start",
+			Data:  fmt.Sprintf(`{"type":"content_block_start","index":%d,"content_block":{"type":"thinking","thinking":""}}`, c.thinkingIdx),
+		})
+		*events = append(*events, AnthropicSSEEvent{
+			Event: "content_block_delta",
+			Data:  fmt.Sprintf(`{"type":"content_block_delta","index":%d,"delta":{"type":"thinking_delta","thinking":%s}}`, c.thinkingIdx, jsonStr(block.Thinking)),
+		})
+		c.closeThinking(events)
+	case "tool_use":
+		c.closeContent(events)
+		c.closeThinking(events)
+		c.closeTool(events)
+		c.toolIdx = c.nextIdx
+		c.nextIdx++
+		c.inTool = true
+		c.emittedTool = true
+		c.currentToolID = block.ToolUseID
+		c.inputAccum = ""
+		inputJSON, _ := json.Marshal(block.ToolInput)
+		*events = append(*events, AnthropicSSEEvent{
+			Event: "content_block_start",
+			Data:  fmt.Sprintf(`{"type":"content_block_start","index":%d,"content_block":{"type":"tool_use","id":%s,"name":%s,"input":{}}}`, c.toolIdx, jsonStr(block.ToolUseID), jsonStr(block.ToolName)),
+		})
+		*events = append(*events, AnthropicSSEEvent{
+			Event: "content_block_delta",
+			Data:  fmt.Sprintf(`{"type":"content_block_delta","index":%d,"delta":{"type":"input_json_delta","partial_json":%s}}`, c.toolIdx, jsonStr(string(inputJSON))),
+		})
+		c.closeTool(events)
+	default:
+		if block.Text == "" {
+			return
+		}
+		if !c.inContent {
+			c.closeThinking(events)
+			c.closeTool(events)
+			c.contentIdx = c.nextIdx
+			c.nextIdx++
+			c.inContent = true
+			*events = append(*events, AnthropicSSEEvent{
+				Event: "content_block_start",
+				Data:  fmt.Sprintf(`{"type":"content_block_start","index":%d,"content_block":{"type":"text","text":""}}`, c.contentIdx),
+			})
+		}
+		*events = append(*events, AnthropicSSEEvent{
+			Event: "content_block_delta",
+			Data:  fmt.Sprintf(`{"type":"content_block_delta","index":%d,"delta":{"type":"text_delta","text":%s}}`, c.contentIdx, jsonStr(block.Text)),
+		})
+	}
+}
+
 func (c *StreamConverter) StopReason() string {
-	if c.toolIdx >= 0 && c.inTool {
+	if c.emittedTool || (c.toolIdx >= 0 && c.inTool) {
 		return "tool_use"
 	}
 	return "end_turn"

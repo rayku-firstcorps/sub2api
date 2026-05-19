@@ -190,6 +190,23 @@ func TestKiroMessageCollectorMergesRepeatedToolUseEventsWithSameID(t *testing.T)
 	require.Equal(t, map[string]any{"url": "https://example.com", "prompt": "read"}, blocks[0]["input"])
 }
 
+func TestKiroMessageCollectorParsesThinkingAndBracketToolCalls(t *testing.T) {
+	collector := newKiroMessageCollector(nil)
+
+	collector.add(kiro.StreamEvent{Content: "<thinking>\nplan\n</thinking>\n\nUse tool [Called Read with args: {path:\"README.md\",}]"})
+
+	blocks := collector.contentBlocks()
+	require.Len(t, blocks, 3)
+	require.Equal(t, "thinking", blocks[0]["type"])
+	require.Contains(t, blocks[0]["thinking"], "plan")
+	require.Equal(t, "text", blocks[1]["type"])
+	require.Contains(t, blocks[1]["text"], "Use tool")
+	require.Equal(t, "tool_use", blocks[2]["type"])
+	require.Equal(t, "Read", blocks[2]["name"])
+	require.Equal(t, map[string]any{"path": "README.md"}, blocks[2]["input"])
+	require.Equal(t, "tool_use", collector.stopReason())
+}
+
 func TestKiroPseudoCacheBreakpointsIncludeToolsSystemAndMessages(t *testing.T) {
 	body := []byte(`{
 		"tools": [{

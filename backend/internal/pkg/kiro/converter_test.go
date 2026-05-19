@@ -32,7 +32,7 @@ func TestConvertRequestFiltersWebSearchTool(t *testing.T) {
 	require.NotContains(t, string(data), `"web_search"`)
 }
 
-func TestConvertRequestOmitsToolsWhenOnlyWebSearchTool(t *testing.T) {
+func TestConvertRequestUsesPlaceholderWhenOnlyWebSearchTool(t *testing.T) {
 	body := []byte(`{
 		"model": "claude-sonnet-4-5",
 		"messages": [{"role":"user","content":"hi"}],
@@ -46,10 +46,12 @@ func TestConvertRequestOmitsToolsWhenOnlyWebSearchTool(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, req.ConversationState.CurrentMessage)
 	ctx := req.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext
-	require.Nil(t, ctx)
+	require.NotNil(t, ctx)
+	require.Len(t, ctx.Tools, 1)
+	require.Equal(t, "no_tool_available", ctx.Tools[0].ToolSpecification.Name)
 }
 
-func TestConvertRequestOmitsToolsWhenNoTools(t *testing.T) {
+func TestConvertRequestUsesPlaceholderWhenNoTools(t *testing.T) {
 	body := []byte(`{
 		"model": "claude-sonnet-4-5",
 		"messages": [{"role":"user","content":"hi"}]
@@ -60,10 +62,12 @@ func TestConvertRequestOmitsToolsWhenNoTools(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, req.ConversationState.CurrentMessage)
 	ctx := req.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext
-	require.Nil(t, ctx)
+	require.NotNil(t, ctx)
+	require.Len(t, ctx.Tools, 1)
+	require.Equal(t, "no_tool_available", ctx.Tools[0].ToolSpecification.Name)
 }
 
-func TestConvertRequestOmitsToolsWhenToolDescriptionsAreEmpty(t *testing.T) {
+func TestConvertRequestUsesPlaceholderWhenToolDescriptionsAreEmpty(t *testing.T) {
 	body := []byte(`{
 		"model": "claude-sonnet-4-5",
 		"messages": [{"role":"user","content":"hi"}],
@@ -78,7 +82,9 @@ func TestConvertRequestOmitsToolsWhenToolDescriptionsAreEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, req.ConversationState.CurrentMessage)
 	ctx := req.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext
-	require.Nil(t, ctx)
+	require.NotNil(t, ctx)
+	require.Len(t, ctx.Tools, 1)
+	require.Equal(t, "no_tool_available", ctx.Tools[0].ToolSpecification.Name)
 }
 
 func TestConvertRequestAllowsToolWithoutInputSchema(t *testing.T) {
@@ -157,4 +163,89 @@ func TestConvertRequestSanitizesAssistantToolUseInputLikeKiroClient(t *testing.T
 	require.Contains(t, string(data), `"input":{"path":"README.md"}`)
 	require.NotContains(t, string(data), `"input":"{\"`)
 	require.NotContains(t, string(data), `"":"bad"`)
+}
+
+func TestConvertRequestNormalizesComplexToolSchemaForKiro(t *testing.T) {
+	body := []byte(`{
+		"model": "claude-sonnet-4-5",
+		"messages": [{"role":"user","content":"hi"}],
+		"tools": [{
+			"name":"complex_tool",
+			"description":"Complex schema",
+			"input_schema":{
+				"$schema":"http://json-schema.org/draft-07/schema#",
+				"$defs":{"pathDef":{"type":["string","null"],"minLength":1}},
+				"type":"object",
+				"properties":{
+					"path":{"$ref":"#/$defs/pathDef"},
+					"mode":{"enum":["read", 2, null]},
+					"options":{"anyOf":[{"type":"object","properties":{"recursive":{"type":"boolean"}}},{"type":"string"}]},
+					"tuple":{"type":"array","items":[{"type":"string"},{"type":"number"}]}
+				},
+				"required":["path","missing"],
+				"additionalProperties":false
+			}
+		}]
+	}`)
+
+	req, err := ConvertRequest(body, "claude-sonnet-4.5", "")
+
+	require.NoError(t, err)
+	ctx := req.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext
+	require.NotNil(t, ctx)
+	require.Len(t, ctx.Tools, 1)
+	schema, ok := ctx.Tools[0].ToolSpecification.InputSchema.JSON.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "object", schema["type"])
+	require.NotContains(t, schema, "$schema")
+	require.NotContains(t, schema, "$defs")
+	require.NotContains(t, schema, "additionalProperties")
+	require.Equal(t, []any{"path"}, schema["required"])
+
+	props := schema["properties"].(map[string]any)
+	path := props["path"].(map[string]any)
+	require.Equal(t, "string", path["type"])
+	require.Contains(t, path["description"], "nullable")
+	require.Contains(t, path["description"], "minLen")
+
+	mode := props["mode"].(map[string]any)
+	require.Equal(t, "string", mode["type"])
+	require.Equal(t, []any{"read", "2", "null"}, mode["enum"])
+
+	options := props["options"].(map[string]any)
+	require.Equal(t, "object", options["type"])
+	require.NotContains(t, options, "anyOf")
+	require.Contains(t, options["properties"], "recursive")
+
+	tuple := props["tuple"].(map[string]any)
+	require.Equal(t, "array", tuple["type"])
+	require.Equal(t, "string", tuple["items"].(map[string]any)["type"])
+}
+
+func TestConvertRequestSupportsCustomToolShape(t *testing.T) {
+	body := []byte(`{
+		"model": "claude-sonnet-4-5",
+		"messages": [{"role":"user","content":"hi"}],
+		"tools": [{
+			"type":"custom",
+			"name":"custom_exec",
+			"custom":{
+				"description":"Execute custom work",
+				"input_schema":{"properties":{"cmd":{"type":"string"}}}
+			}
+		}]
+	}`)
+
+	req, err := ConvertRequest(body, "claude-sonnet-4.5", "")
+
+	require.NoError(t, err)
+	ctx := req.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext
+	require.NotNil(t, ctx)
+	require.Len(t, ctx.Tools, 1)
+	tool := ctx.Tools[0].ToolSpecification
+	require.Equal(t, "custom_exec", tool.Name)
+	require.Equal(t, "Execute custom work", tool.Description)
+	schema := tool.InputSchema.JSON.(map[string]any)
+	require.Equal(t, "object", schema["type"])
+	require.Contains(t, schema["properties"], "cmd")
 }

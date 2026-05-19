@@ -78,9 +78,6 @@ func buildToolNameMaps(tools []gjson.Result) map[string]string {
 }
 
 func convertTools(tools []gjson.Result) []ToolSpecWrapper {
-	if len(tools) == 0 {
-		return nil
-	}
 	result := make([]ToolSpecWrapper, 0, len(tools))
 	for _, tool := range tools {
 		if isIgnoredKiroTool(tool) {
@@ -92,6 +89,9 @@ func convertTools(tools []gjson.Result) []ToolSpecWrapper {
 		}
 		result = append(result, spec)
 	}
+	if len(result) == 0 {
+		return []ToolSpecWrapper{placeholderToolSpec()}
+	}
 	return result
 }
 
@@ -102,17 +102,16 @@ func convertTool(tool gjson.Result) (ToolSpecWrapper, bool) {
 
 	name := tool.Get("name").String()
 	desc := tool.Get("description").String()
+	schemaResult := tool.Get("input_schema")
+	if tool.Get("type").String() == "custom" {
+		desc = tool.Get("custom.description").String()
+		schemaResult = tool.Get("custom.input_schema")
+	}
 	if len(desc) > MaxToolDescLen {
 		desc = desc[:MaxToolDescLen] + "..."
 	}
 
-	var schema any
-	schemaRaw := tool.Get("input_schema").Raw
-	if schemaRaw != "" {
-		_ = json.Unmarshal([]byte(schemaRaw), &schema)
-	} else {
-		schema = map[string]any{}
-	}
+	schema := normalizeKiroInputSchema(schemaResult)
 
 	return ToolSpecWrapper{
 		ToolSpecification: ToolSpecification{
@@ -121,6 +120,19 @@ func convertTool(tool gjson.Result) (ToolSpecWrapper, bool) {
 			InputSchema: InputSchema{JSON: schema},
 		},
 	}, true
+}
+
+func placeholderToolSpec() ToolSpecWrapper {
+	return ToolSpecWrapper{
+		ToolSpecification: ToolSpecification{
+			Name:        "no_tool_available",
+			Description: "This is a placeholder tool when no other tools are available. It does nothing.",
+			InputSchema: InputSchema{JSON: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			}},
+		},
+	}
 }
 
 func isIgnoredKiroTool(tool gjson.Result) bool {
@@ -132,11 +144,430 @@ func isKiroCompatibleTool(tool gjson.Result) bool {
 	if tool.Get("name").String() == "" {
 		return false
 	}
-	if strings.TrimSpace(tool.Get("description").String()) == "" {
+	desc := tool.Get("description").String()
+	schema := tool.Get("input_schema")
+	if tool.Get("type").String() == "custom" {
+		desc = tool.Get("custom.description").String()
+		schema = tool.Get("custom.input_schema")
+	}
+	if strings.TrimSpace(desc) == "" {
 		return false
 	}
-	schema := tool.Get("input_schema")
 	return !schema.Exists() || schema.IsObject()
+}
+
+func normalizeKiroInputSchema(schemaResult gjson.Result) map[string]any {
+	var schema map[string]any
+	if schemaResult.Exists() && schemaResult.IsObject() {
+		_ = json.Unmarshal([]byte(schemaResult.Raw), &schema)
+	}
+	if schema == nil {
+		schema = map[string]any{}
+	}
+	defs := extractKiroSchemaDefs(schema)
+	normalized, ok := normalizeKiroSchemaValue(schema, defs).(map[string]any)
+	if !ok || normalized == nil {
+		normalized = map[string]any{}
+	}
+	ensureKiroObjectSchema(normalized)
+	return normalized
+}
+
+func normalizeKiroSchemaValue(value any, defs map[string]any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		return normalizeKiroSchemaMap(v, defs)
+	case []any:
+		out := make([]any, 0, len(v))
+		for _, item := range v {
+			out = append(out, normalizeKiroSchemaValue(item, defs))
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func normalizeKiroSchemaMap(schema map[string]any, defs map[string]any) map[string]any {
+	if ref, ok := schema["$ref"].(string); ok {
+		if resolved, found := resolveLocalKiroRef(ref, schema, defs); found {
+			for k, v := range resolved {
+				if _, exists := schema[k]; !exists {
+					schema[k] = deepCopyJSON(v)
+				}
+			}
+		}
+	}
+
+	if merged := bestKiroUnionBranch(schema); merged != nil {
+		for k, v := range merged {
+			if k == "properties" {
+				dst, _ := schema["properties"].(map[string]any)
+				if dst == nil {
+					dst = map[string]any{}
+					schema["properties"] = dst
+				}
+				if src, ok := v.(map[string]any); ok {
+					for pk, pv := range src {
+						if _, exists := dst[pk]; !exists {
+							dst[pk] = deepCopyJSON(pv)
+						}
+					}
+				}
+				continue
+			}
+			if _, exists := schema[k]; !exists {
+				schema[k] = deepCopyJSON(v)
+			}
+		}
+	}
+
+	if allOf, ok := schema["allOf"].([]any); ok {
+		for _, branch := range allOf {
+			branchMap, ok := branch.(map[string]any)
+			if !ok {
+				continue
+			}
+			branchMap = normalizeKiroSchemaMap(branchMap, defs)
+			for k, v := range branchMap {
+				if k == "properties" {
+					dst, _ := schema["properties"].(map[string]any)
+					if dst == nil {
+						dst = map[string]any{}
+						schema["properties"] = dst
+					}
+					if src, ok := v.(map[string]any); ok {
+						for pk, pv := range src {
+							if _, exists := dst[pk]; !exists {
+								dst[pk] = pv
+							}
+						}
+					}
+					continue
+				}
+				if _, exists := schema[k]; !exists {
+					schema[k] = v
+				}
+			}
+		}
+	}
+
+	if props, ok := schema["properties"].(map[string]any); ok {
+		for key, prop := range props {
+			props[key] = normalizeKiroSchemaValue(prop, defs)
+		}
+	}
+	if items, ok := schema["items"]; ok {
+		if itemArray, ok := items.([]any); ok {
+			schema["items"] = normalizeKiroSchemaValue(selectBestKiroSchema(itemArray), defs)
+		} else {
+			schema["items"] = normalizeKiroSchemaValue(items, defs)
+		}
+	}
+
+	migrateKiroSchemaConstraints(schema)
+	for key := range schema {
+		if !isAllowedKiroSchemaField(key) {
+			delete(schema, key)
+		}
+	}
+	normalizeKiroSchemaType(schema)
+	normalizeKiroEnum(schema)
+	filterKiroRequired(schema)
+	if schema["type"] == "object" {
+		if _, ok := schema["properties"].(map[string]any); !ok {
+			schema["properties"] = map[string]any{}
+		}
+	}
+	return schema
+}
+
+func ensureKiroObjectSchema(schema map[string]any) {
+	if _, ok := schema["type"]; !ok {
+		schema["type"] = "object"
+	}
+	if schema["type"] == "object" {
+		if _, ok := schema["properties"].(map[string]any); !ok {
+			schema["properties"] = map[string]any{}
+		}
+	}
+	filterKiroRequired(schema)
+}
+
+func isAllowedKiroSchemaField(key string) bool {
+	switch key {
+	case "type", "description", "properties", "required", "items", "enum", "title":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeKiroSchemaType(schema map[string]any) {
+	if raw, exists := schema["type"]; exists {
+		switch typed := raw.(type) {
+		case string:
+			lower := strings.ToLower(strings.TrimSpace(typed))
+			if lower == "" || lower == "null" {
+				lower = inferKiroSchemaType(schema)
+			}
+			schema["type"] = lower
+		case []any:
+			selected := ""
+			nullable := false
+			for _, item := range typed {
+				part, ok := item.(string)
+				if !ok {
+					continue
+				}
+				lower := strings.ToLower(strings.TrimSpace(part))
+				if lower == "null" {
+					nullable = true
+					continue
+				}
+				if selected == "" {
+					selected = lower
+				}
+			}
+			if selected == "" {
+				selected = inferKiroSchemaType(schema)
+			}
+			schema["type"] = selected
+			if nullable {
+				appendKiroDescription(schema, "(nullable)")
+			}
+		default:
+			schema["type"] = inferKiroSchemaType(schema)
+		}
+		return
+	}
+	schema["type"] = inferKiroSchemaType(schema)
+}
+
+func inferKiroSchemaType(schema map[string]any) string {
+	if _, ok := schema["properties"]; ok {
+		return "object"
+	}
+	if _, ok := schema["items"]; ok {
+		return "array"
+	}
+	if _, ok := schema["enum"]; ok {
+		return "string"
+	}
+	return "object"
+}
+
+func filterKiroRequired(schema map[string]any) {
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		delete(schema, "required")
+		return
+	}
+	req, ok := schema["required"].([]any)
+	if !ok {
+		return
+	}
+	filtered := make([]any, 0, len(req))
+	seen := map[string]struct{}{}
+	for _, item := range req {
+		key, ok := item.(string)
+		if !ok {
+			continue
+		}
+		if _, exists := props[key]; !exists {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		filtered = append(filtered, key)
+	}
+	if len(filtered) == 0 {
+		delete(schema, "required")
+		return
+	}
+	schema["required"] = filtered
+}
+
+func normalizeKiroEnum(schema map[string]any) {
+	enumValues, ok := schema["enum"].([]any)
+	if !ok {
+		return
+	}
+	hasNonString := false
+	for i, value := range enumValues {
+		if _, ok := value.(string); ok {
+			continue
+		}
+		hasNonString = true
+		if value == nil {
+			enumValues[i] = "null"
+		} else {
+			enumValues[i] = fmt.Sprintf("%v", value)
+		}
+	}
+	if hasNonString {
+		schema["type"] = "string"
+	}
+}
+
+func migrateKiroSchemaConstraints(schema map[string]any) {
+	constraints := []struct {
+		key   string
+		label string
+	}{
+		{"minLength", "minLen"},
+		{"maxLength", "maxLen"},
+		{"pattern", "pattern"},
+		{"minimum", "min"},
+		{"maximum", "max"},
+		{"multipleOf", "multipleOf"},
+		{"exclusiveMinimum", "exclMin"},
+		{"exclusiveMaximum", "exclMax"},
+		{"minItems", "minItems"},
+		{"maxItems", "maxItems"},
+		{"format", "format"},
+	}
+	var hints []string
+	for _, constraint := range constraints {
+		if value, ok := schema[constraint.key]; ok && value != nil {
+			hints = append(hints, fmt.Sprintf("%s: %v", constraint.label, value))
+		}
+	}
+	if len(hints) > 0 {
+		appendKiroDescription(schema, "[Constraint: "+strings.Join(hints, ", ")+"]")
+	}
+}
+
+func appendKiroDescription(schema map[string]any, suffix string) {
+	desc, _ := schema["description"].(string)
+	if strings.Contains(desc, suffix) {
+		return
+	}
+	if desc != "" {
+		desc += " "
+	}
+	schema["description"] = desc + suffix
+}
+
+func bestKiroUnionBranch(schema map[string]any) map[string]any {
+	if branches, ok := schema["anyOf"].([]any); ok {
+		if selected, ok := selectBestKiroSchema(branches).(map[string]any); ok {
+			return selected
+		}
+	}
+	if branches, ok := schema["oneOf"].([]any); ok {
+		if selected, ok := selectBestKiroSchema(branches).(map[string]any); ok {
+			return selected
+		}
+	}
+	return nil
+}
+
+func selectBestKiroSchema(branches []any) any {
+	var selected any
+	bestScore := -1
+	for _, branch := range branches {
+		score := scoreKiroSchema(branch)
+		if score > bestScore {
+			bestScore = score
+			selected = branch
+		}
+	}
+	if selected == nil {
+		return map[string]any{"type": "string"}
+	}
+	return selected
+}
+
+func scoreKiroSchema(value any) int {
+	schema, ok := value.(map[string]any)
+	if !ok {
+		return 0
+	}
+	typeName, _ := schema["type"].(string)
+	typeName = strings.ToLower(typeName)
+	if _, ok := schema["properties"]; ok || typeName == "object" {
+		return 3
+	}
+	if _, ok := schema["items"]; ok || typeName == "array" {
+		return 2
+	}
+	if typeName != "" && typeName != "null" {
+		return 1
+	}
+	return 0
+}
+
+func extractKiroSchemaDefs(schema map[string]any) map[string]any {
+	defs := map[string]any{}
+	for _, key := range []string{"$defs", "definitions"} {
+		if raw, ok := schema[key].(map[string]any); ok {
+			for name, value := range raw {
+				defs[name] = value
+			}
+			delete(schema, key)
+		}
+	}
+	return defs
+}
+
+func resolveLocalKiroRef(ref string, root map[string]any, defs map[string]any) (map[string]any, bool) {
+	if !strings.HasPrefix(ref, "#/") {
+		return nil, false
+	}
+	parts := strings.Split(strings.TrimPrefix(ref, "#/"), "/")
+	if len(parts) >= 2 && (parts[0] == "$defs" || parts[0] == "definitions") {
+		value, ok := defs[parts[1]]
+		if !ok {
+			return nil, false
+		}
+		for _, part := range parts[2:] {
+			m, ok := value.(map[string]any)
+			if !ok {
+				return nil, false
+			}
+			value, ok = m[part]
+			if !ok {
+				return nil, false
+			}
+		}
+		m, ok := value.(map[string]any)
+		return m, ok
+	}
+	var current any = root
+	for _, part := range parts {
+		m, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current, ok = m[part]
+		if !ok {
+			return nil, false
+		}
+	}
+	m, ok := current.(map[string]any)
+	return m, ok
+}
+
+func deepCopyJSON(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		copied := make(map[string]any, len(v))
+		for key, item := range v {
+			copied[key] = deepCopyJSON(item)
+		}
+		return copied
+	case []any:
+		copied := make([]any, len(v))
+		for i, item := range v {
+			copied[i] = deepCopyJSON(item)
+		}
+		return copied
+	default:
+		return value
+	}
 }
 
 func extractSystem(parsed gjson.Result) string {
