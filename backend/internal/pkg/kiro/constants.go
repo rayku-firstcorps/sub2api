@@ -30,7 +30,7 @@ const (
 	AuthMethodBuilderID = "builder_id"
 
 	ThinkingMinBudget     = 1024
-	ThinkingMaxBudget     = 128000
+	ThinkingMaxBudget     = 24576
 	ThinkingDefaultBudget = 20000
 
 	ChatTriggerTypeManual = "MANUAL"
