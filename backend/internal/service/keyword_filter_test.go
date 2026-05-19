@@ -74,6 +74,109 @@ func TestKeywordFilterService_RegexDefaultsDisabled(t *testing.T) {
 	}
 }
 
+func TestKeywordFilterService_TokenModeAvoidsEnglishFalsePositives(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	cfg := defaultKeywordFilterConfig()
+	cfg.KeywordRules = []KeywordFilterRule{
+		{ID: "ass", Pattern: "ass", MatchMode: KeywordFilterMatchModeAuto, Enabled: true, Action: KeywordFilterActionBlock},
+		{ID: "drug", Pattern: "drug", MatchMode: KeywordFilterMatchModeAuto, Enabled: true, Action: KeywordFilterActionBlock},
+		{ID: "sex", Pattern: "sex", MatchMode: KeywordFilterMatchModeAuto, Enabled: true, Action: KeywordFilterActionBlock},
+	}
+
+	if match := svc.match(cfg, svc.normalizeText("classic class name")); match != nil {
+		t.Fatalf("expected ass not to match class, got %#v", match)
+	}
+	if match := svc.match(cfg, svc.normalizeText("red rug")); match != nil {
+		t.Fatalf("expected drug not to match red rug, got %#v", match)
+	}
+	if match := svc.match(cfg, svc.normalizeText("Sussex")); match != nil {
+		t.Fatalf("expected sex not to match Sussex, got %#v", match)
+	}
+	if match := svc.match(cfg, svc.normalizeText("bad ass")); match == nil || match.ResolvedMatchMode != KeywordFilterMatchModeToken {
+		t.Fatalf("expected token match, got %#v", match)
+	}
+}
+
+func TestKeywordFilterService_CJKTokenAvoidsContinuousSubstringFalsePositive(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	cfg := defaultKeywordFilterConfig()
+	cfg.KeywordRules = []KeywordFilterRule{
+		{ID: "cjk", Pattern: "\u6027\u611f", MatchMode: KeywordFilterMatchModeAuto, Enabled: true, Action: KeywordFilterActionBlock},
+	}
+
+	if match := svc.match(cfg, svc.normalizeText("\u6709\u4e3b\u89c2\u6027\u611f\u609f")); match != nil {
+		t.Fatalf("expected cjk token not to match inside continuous phrase, got %#v", match)
+	}
+	if match := svc.match(cfg, svc.normalizeText("\u8fd9\u662f \u6027\u611f \u5185\u5bb9")); match == nil || match.ResolvedMatchMode != KeywordFilterMatchModeCJKToken {
+		t.Fatalf("expected cjk token match, got %#v", match)
+	}
+}
+
+func TestKeywordFilterService_MixedExactPhrase(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	cfg := defaultKeywordFilterConfig()
+	cfg.KeywordRules = []KeywordFilterRule{
+		{ID: "mixed", Pattern: "AI\u8bc8\u9a97", MatchMode: KeywordFilterMatchModeAuto, Enabled: true, Action: KeywordFilterActionBlock},
+	}
+
+	if match := svc.match(cfg, svc.normalizeText("AI\u8bc8\u9a97")); match == nil || match.ResolvedMatchMode != KeywordFilterMatchModeExactPhrase {
+		t.Fatalf("expected mixed exact phrase match, got %#v", match)
+	}
+	if match := svc.match(cfg, svc.normalizeText("AI \u8bc8\u9a97")); match == nil {
+		t.Fatalf("expected mixed exact phrase with space to match")
+	}
+	if match := svc.match(cfg, svc.normalizeText("paid\u8bc8\u9a97")); match != nil {
+		t.Fatalf("expected mixed phrase not to match inside latin token, got %#v", match)
+	}
+}
+
+func TestKeywordFilterService_FuzzyModeAllowsWeakPunctuation(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	cfg := defaultKeywordFilterConfig()
+	cfg.KeywordRules = []KeywordFilterRule{
+		{ID: "fuzzy", Pattern: "badword", MatchMode: KeywordFilterMatchModeFuzzy, Enabled: true, Action: KeywordFilterActionBlock},
+	}
+
+	if match := svc.match(cfg, svc.normalizeText("b-a_d w.o+r=d")); match == nil || match.ResolvedMatchMode != KeywordFilterMatchModeFuzzy {
+		t.Fatalf("expected fuzzy noisy match, got %#v", match)
+	}
+}
+
+func TestKeywordFilterService_WhitelistTargetRuleIDs(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	cfg := defaultKeywordFilterConfig()
+	cfg.KeywordRules = []KeywordFilterRule{
+		{ID: "bad", Pattern: "bad", MatchMode: KeywordFilterMatchModeContains, Enabled: true, Action: KeywordFilterActionBlock},
+		{ID: "evil", Pattern: "evil", MatchMode: KeywordFilterMatchModeContains, Enabled: true, Action: KeywordFilterActionBlock},
+	}
+	cfg.WhitelistRules = []KeywordFilterWhitelistRule{
+		{ID: "safe_bad", Pattern: "safe bad", MatchMode: KeywordFilterMatchModeContains, TargetRuleIDs: []string{"bad"}, Enabled: true},
+	}
+
+	if match := svc.match(cfg, svc.normalizeText("safe bad")); match != nil {
+		t.Fatalf("expected targeted whitelist to cover bad, got %#v", match)
+	}
+	if match := svc.match(cfg, svc.normalizeText("safe evil")); match == nil {
+		t.Fatalf("expected whitelist not to cover non-target rule")
+	}
+}
+
+func TestExtractKeywordFilterSegments_OpenAIChatParts(t *testing.T) {
+	body := []byte(`{
+		"messages": [
+			{"role":"user","content":[{"type":"text","text":"first part"},{"type":"text","text":"second part"}]},
+			{"role":"assistant","content":"assistant text"}
+		]
+	}`)
+	got := ExtractKeywordFilterSegments(ContentModerationProtocolOpenAIChat, body)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2: %#v", len(got), got)
+	}
+	if got[0].MessageIndex != 0 || got[0].PartIndex != 0 || got[1].PartIndex != 1 {
+		t.Fatalf("unexpected segment indexes: %#v", got)
+	}
+}
+
 func TestExtractKeywordFilterTexts_AllUserTextOnly(t *testing.T) {
 	body := []byte(`{
 		"messages": [

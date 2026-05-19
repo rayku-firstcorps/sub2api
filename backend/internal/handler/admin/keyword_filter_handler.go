@@ -28,41 +28,47 @@ func (h *KeywordFilterHandler) available(c *gin.Context) bool {
 }
 
 type keywordFilterConfigRequest struct {
-	Enabled          *bool                             `json:"enabled"`
-	AllGroups        *bool                             `json:"all_groups"`
-	GroupIDs         *[]int64                          `json:"group_ids"`
-	Keywords         *[]string                         `json:"keywords"`
-	Whitelist        *[]string                         `json:"whitelist"`
-	RegexRules       *[]service.KeywordFilterRegexRule `json:"regex_rules"`
-	BlockStatus      *int                              `json:"block_status"`
-	BlockMessage     *string                           `json:"block_message"`
-	HitRetentionDays *int                              `json:"hit_retention_days"`
+	Enabled          *bool                                 `json:"enabled"`
+	AllGroups        *bool                                 `json:"all_groups"`
+	GroupIDs         *[]int64                              `json:"group_ids"`
+	Keywords         *[]string                             `json:"keywords"`
+	Whitelist        *[]string                             `json:"whitelist"`
+	KeywordRules     *[]service.KeywordFilterRule          `json:"keyword_rules"`
+	WhitelistRules   *[]service.KeywordFilterWhitelistRule `json:"whitelist_rules"`
+	RegexRules       *[]service.KeywordFilterRegexRule     `json:"regex_rules"`
+	BlockStatus      *int                                  `json:"block_status"`
+	BlockMessage     *string                               `json:"block_message"`
+	HitRetentionDays *int                                  `json:"hit_retention_days"`
 }
 
 type keywordFilterTestRequest struct {
-	Text             string                            `json:"text"`
-	Enabled          *bool                             `json:"enabled"`
-	AllGroups        *bool                             `json:"all_groups"`
-	GroupIDs         *[]int64                          `json:"group_ids"`
-	Keywords         *[]string                         `json:"keywords"`
-	Whitelist        *[]string                         `json:"whitelist"`
-	RegexRules       *[]service.KeywordFilterRegexRule `json:"regex_rules"`
-	BlockStatus      *int                              `json:"block_status"`
-	BlockMessage     *string                           `json:"block_message"`
-	HitRetentionDays *int                              `json:"hit_retention_days"`
-	Config           *keywordFilterTestConfigPatch     `json:"config"`
+	Text             string                                `json:"text"`
+	Enabled          *bool                                 `json:"enabled"`
+	AllGroups        *bool                                 `json:"all_groups"`
+	GroupIDs         *[]int64                              `json:"group_ids"`
+	Keywords         *[]string                             `json:"keywords"`
+	Whitelist        *[]string                             `json:"whitelist"`
+	KeywordRules     *[]service.KeywordFilterRule          `json:"keyword_rules"`
+	WhitelistRules   *[]service.KeywordFilterWhitelistRule `json:"whitelist_rules"`
+	RegexRules       *[]service.KeywordFilterRegexRule     `json:"regex_rules"`
+	BlockStatus      *int                                  `json:"block_status"`
+	BlockMessage     *string                               `json:"block_message"`
+	HitRetentionDays *int                                  `json:"hit_retention_days"`
+	Config           *keywordFilterTestConfigPatch         `json:"config"`
 }
 
 type keywordFilterTestConfigPatch struct {
-	Enabled          *bool                             `json:"enabled"`
-	AllGroups        *bool                             `json:"all_groups"`
-	GroupIDs         *[]int64                          `json:"group_ids"`
-	Keywords         *[]string                         `json:"keywords"`
-	Whitelist        *[]string                         `json:"whitelist"`
-	RegexRules       *[]service.KeywordFilterRegexRule `json:"regex_rules"`
-	BlockStatus      *int                              `json:"block_status"`
-	BlockMessage     *string                           `json:"block_message"`
-	HitRetentionDays *int                              `json:"hit_retention_days"`
+	Enabled          *bool                                 `json:"enabled"`
+	AllGroups        *bool                                 `json:"all_groups"`
+	GroupIDs         *[]int64                              `json:"group_ids"`
+	Keywords         *[]string                             `json:"keywords"`
+	Whitelist        *[]string                             `json:"whitelist"`
+	KeywordRules     *[]service.KeywordFilterRule          `json:"keyword_rules"`
+	WhitelistRules   *[]service.KeywordFilterWhitelistRule `json:"whitelist_rules"`
+	RegexRules       *[]service.KeywordFilterRegexRule     `json:"regex_rules"`
+	BlockStatus      *int                                  `json:"block_status"`
+	BlockMessage     *string                               `json:"block_message"`
+	HitRetentionDays *int                                  `json:"hit_retention_days"`
 }
 
 func (h *KeywordFilterHandler) GetConfig(c *gin.Context) {
@@ -92,6 +98,8 @@ func (h *KeywordFilterHandler) UpdateConfig(c *gin.Context) {
 		GroupIDs:         req.GroupIDs,
 		Keywords:         req.Keywords,
 		Whitelist:        req.Whitelist,
+		KeywordRules:     req.KeywordRules,
+		WhitelistRules:   req.WhitelistRules,
 		RegexRules:       req.RegexRules,
 		BlockStatus:      req.BlockStatus,
 		BlockMessage:     req.BlockMessage,
@@ -119,6 +127,8 @@ func (h *KeywordFilterHandler) Test(c *gin.Context) {
 		GroupIDs:         req.GroupIDs,
 		Keywords:         req.Keywords,
 		Whitelist:        req.Whitelist,
+		KeywordRules:     req.KeywordRules,
+		WhitelistRules:   req.WhitelistRules,
 		RegexRules:       req.RegexRules,
 		BlockStatus:      req.BlockStatus,
 		BlockMessage:     req.BlockMessage,
@@ -131,6 +141,8 @@ func (h *KeywordFilterHandler) Test(c *gin.Context) {
 			GroupIDs:         req.Config.GroupIDs,
 			Keywords:         req.Config.Keywords,
 			Whitelist:        req.Config.Whitelist,
+			KeywordRules:     req.Config.KeywordRules,
+			WhitelistRules:   req.Config.WhitelistRules,
 			RegexRules:       req.Config.RegexRules,
 			BlockStatus:      req.Config.BlockStatus,
 			BlockMessage:     req.Config.BlockMessage,

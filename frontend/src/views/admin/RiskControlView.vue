@@ -838,14 +838,96 @@
             <Toggle v-model="keywordForm.enabled" />
           </div>
 
-          <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <div>
-              <label class="input-label">{{ t('admin.riskControl.keyword.keywords') }}</label>
-              <textarea v-model="keywordForm.keywords_text" class="input min-h-36 resize-y" :placeholder="t('admin.riskControl.keyword.keywordsPlaceholder')"></textarea>
+          <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ kt('ruleEditor') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ kt('ruleEditorHint') }}</p>
+              </div>
+              <div class="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+                <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="keywordRuleViewMode === 'simple' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-800 dark:text-white' : 'text-gray-500 dark:text-gray-400'" @click="switchKeywordRuleViewMode('simple')">
+                  {{ kt('simpleRules') }}
+                </button>
+                <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="keywordRuleViewMode === 'advanced' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-800 dark:text-white' : 'text-gray-500 dark:text-gray-400'" @click="switchKeywordRuleViewMode('advanced')">
+                  {{ kt('advancedRules') }}
+                </button>
+              </div>
             </div>
-            <div>
-              <label class="input-label">{{ t('admin.riskControl.keyword.whitelist') }}</label>
-              <textarea v-model="keywordForm.whitelist_text" class="input min-h-36 resize-y" :placeholder="t('admin.riskControl.keyword.whitelistPlaceholder')"></textarea>
+
+            <div v-if="keywordRuleViewMode === 'simple'" class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t('admin.riskControl.keyword.keywords') }}</label>
+                <textarea v-model="keywordForm.keywords_text" class="input min-h-36 resize-y" :placeholder="t('admin.riskControl.keyword.keywordsPlaceholder')"></textarea>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.riskControl.keyword.whitelist') }}</label>
+                <textarea v-model="keywordForm.whitelist_text" class="input min-h-36 resize-y" :placeholder="t('admin.riskControl.keyword.whitelistPlaceholder')"></textarea>
+              </div>
+            </div>
+
+            <div v-else class="space-y-4">
+              <div class="space-y-2">
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ kt('keywordRules') }}</p>
+                  <button type="button" class="btn btn-secondary inline-flex items-center gap-2" @click="addKeywordRule">
+                    <Icon name="plus" size="sm" />
+                    {{ kt('addKeywordRule') }}
+                  </button>
+                </div>
+                <div class="space-y-2">
+                  <div v-for="(rule, index) in keywordForm.keyword_rules" :key="rule.id || index" class="grid grid-cols-1 gap-2 rounded-lg bg-gray-50 p-3 dark:bg-dark-900/30 lg:grid-cols-[minmax(0,1fr)_180px_auto_auto] lg:items-center">
+                    <input v-model.trim="rule.pattern" type="text" class="input" :placeholder="kt('rulePattern')" />
+                    <Select :model-value="rule.match_mode" :options="keywordMatchModeOptions" @update:model-value="rule.match_mode = normalizeMatchMode(String($event || 'auto'))" />
+                    <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                      <Toggle v-model="rule.enabled" />
+                      {{ t('admin.riskControl.keyword.enabledShort') }}
+                    </label>
+                    <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-red-600 dark:hover:bg-dark-700" @click="removeKeywordRule(index)">
+                      <Icon name="trash" size="sm" />
+                    </button>
+                  </div>
+                  <p v-if="keywordForm.keyword_rules.length === 0" class="text-sm text-gray-500 dark:text-gray-400">{{ kt('noKeywordRules') }}</p>
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ kt('whitelistRules') }}</p>
+                  <button type="button" class="btn btn-secondary inline-flex items-center gap-2" @click="addWhitelistRule">
+                    <Icon name="plus" size="sm" />
+                    {{ kt('addWhitelistRule') }}
+                  </button>
+                </div>
+                <div class="space-y-2">
+                  <div v-for="(rule, index) in keywordForm.whitelist_rules" :key="rule.id || index" class="space-y-3 rounded-lg bg-gray-50 p-3 dark:bg-dark-900/30">
+                    <div class="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_180px_auto_auto] lg:items-center">
+                      <input v-model.trim="rule.pattern" type="text" class="input" :placeholder="kt('rulePattern')" />
+                      <Select :model-value="rule.match_mode" :options="keywordMatchModeOptions" @update:model-value="rule.match_mode = normalizeMatchMode(String($event || 'auto'))" />
+                      <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                        <Toggle v-model="rule.enabled" />
+                        {{ t('admin.riskControl.keyword.enabledShort') }}
+                      </label>
+                      <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-red-600 dark:hover:bg-dark-700" @click="removeWhitelistRule(index)">
+                        <Icon name="trash" size="sm" />
+                      </button>
+                    </div>
+                    <div v-if="keywordForm.keyword_rules.length > 0" class="flex flex-wrap gap-2">
+                      <button
+                        v-for="target in keywordForm.keyword_rules"
+                        :key="`${rule.id}-${target.id}`"
+                        type="button"
+                        class="rounded-md border px-2 py-1 text-xs transition-colors"
+                        :class="rule.target_rule_ids.includes(target.id) ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300' : 'border-gray-200 text-gray-500 dark:border-dark-600 dark:text-gray-400'"
+                        @click="toggleWhitelistTarget(rule, target.id)"
+                      >
+                        {{ target.pattern || target.id }}
+                      </button>
+                      <span class="text-xs text-gray-400">{{ rule.target_rule_ids.length === 0 ? kt('whitelistTargetsAll') : kt('whitelistTargetsSome') }}</span>
+                    </div>
+                  </div>
+                  <p v-if="keywordForm.whitelist_rules.length === 0" class="text-sm text-gray-500 dark:text-gray-400">{{ kt('noWhitelistRules') }}</p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -887,8 +969,13 @@
                 {{ keywordTestResult.blocked ? t('admin.riskControl.keyword.testBlocked') : t('admin.riskControl.keyword.testPassed') }}
               </span>
               <span v-if="keywordTestResult?.blocked" class="text-sm text-gray-500 dark:text-gray-400">
-                {{ keywordTestResult.match_type }} / {{ keywordTestResult.rule_name }} / {{ keywordTestResult.matched_text }}
+                {{ keywordTestResult.match_type }} / {{ keywordTestResult.rule_name }} / {{ matchModeLabel(keywordTestResult.resolved_match_mode) }} / {{ keywordTestResult.matched_text }}
               </span>
+            </div>
+            <div v-if="keywordTestResult?.blocked" class="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-500 dark:text-gray-400 sm:grid-cols-2">
+              <div>{{ kt('testRule') }}: {{ keywordTestResult.rule_id || keywordTestResult.rule_name || '-' }}</div>
+              <div>{{ kt('testSegment') }}: #{{ keywordTestResult.segment_index ?? 0 }}</div>
+              <div class="sm:col-span-2">{{ kt('testExcerpt') }}: {{ keywordTestResult.segment_text || keywordTestResult.matched_text || '-' }}</div>
             </div>
           </div>
 
@@ -923,6 +1010,9 @@
               </div>
             </div>
             <div v-if="!keywordForm.all_groups" class="grid max-h-60 grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
+              <div v-if="keywordGroupScopeInvalid" class="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
+                {{ t('admin.riskControl.keyword.groupScopeEmptyHint') }}
+              </div>
               <button
                 v-for="group in groups"
                 :key="group.id"
@@ -1028,8 +1118,11 @@ import type {
   ContentModerationTestAuditResult,
   KeywordFilterConfig,
   KeywordFilterLog,
+  KeywordFilterMatchMode,
   KeywordFilterRegexRule,
+  KeywordFilterRule,
   KeywordFilterTestResponse,
+  KeywordFilterWhitelistRule,
   ModerationMode,
   UpdateContentModerationConfig,
   UpdateKeywordFilterConfig,
@@ -1043,6 +1136,7 @@ type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'retention'
 type RecordTab = 'keyword' | 'moderation'
 type WorkerSlotState = 'active' | 'idle' | 'disabled'
 type APIKeysWriteMode = 'append' | 'replace'
+type KeywordRuleViewMode = 'simple' | 'advanced'
 type OverviewIcon = 'shield' | 'key' | 'users' | 'document'
 type OverviewItem = {
   key: string
@@ -1091,6 +1185,7 @@ const groups = ref<AdminGroup[]>([])
 const logs = ref<ContentModerationLog[]>([])
 const keywordLogs = ref<KeywordFilterLog[]>([])
 const status = ref<ContentModerationRuntimeStatus | null>(null)
+const keywordRuleViewMode = ref<KeywordRuleViewMode>('simple')
 const testedApiKeyStatuses = ref<ContentModerationAPIKeyStatus[]>([])
 const pendingDeleteApiKeyHashes = ref<string[]>([])
 const apiKeyRowsExpanded = ref<boolean>(false)
@@ -1140,6 +1235,8 @@ const keywordForm = reactive({
   group_ids: [] as number[],
   keywords_text: '',
   whitelist_text: '',
+  keyword_rules: [] as KeywordFilterRule[],
+  whitelist_rules: [] as KeywordFilterWhitelistRule[],
   regex_rules: [] as KeywordFilterRegexRule[],
   block_status: 403,
   block_message: defaultKeywordFilterBlockMessage,
@@ -1174,6 +1271,15 @@ const modeOptions = computed<SelectOption[]>(() => [
   { value: 'pre_block', label: t('admin.riskControl.modePreBlock') },
   { value: 'observe', label: t('admin.riskControl.modeObserve') },
   { value: 'off', label: t('admin.riskControl.modeOff') },
+])
+
+const keywordMatchModeOptions = computed<SelectOption[]>(() => [
+  { value: 'auto', label: kt('matchModeAuto') },
+  { value: 'contains', label: kt('matchModeContains') },
+  { value: 'fuzzy', label: kt('matchModeFuzzy') },
+  { value: 'token', label: kt('matchModeToken') },
+  { value: 'exact_phrase', label: kt('matchModeExactPhrase') },
+  { value: 'cjk_token', label: kt('matchModeCJKToken') },
 ])
 
 const resultOptions = computed<SelectOption[]>(() => {
@@ -1228,6 +1334,8 @@ const keywordGroupStateText = computed(() => {
   if (groupsLoadFailed.value) return t('admin.riskControl.keyword.groupsLoadFailed')
   return t('admin.riskControl.noGroups')
 })
+
+const keywordGroupScopeInvalid = computed(() => !keywordForm.all_groups && keywordForm.group_ids.length === 0)
 
 const inputApiKeyCount = computed(() => parseApiKeys(configForm.api_keys_text).length)
 
@@ -1445,10 +1553,14 @@ function applyKeywordConfig(config: KeywordFilterConfig) {
   keywordForm.group_ids = Array.isArray(config.group_ids) ? [...config.group_ids] : []
   keywordForm.keywords_text = (config.keywords || []).join('\n')
   keywordForm.whitelist_text = (config.whitelist || []).join('\n')
+  keywordForm.keyword_rules = normalizeKeywordRules(config.keyword_rules || [], config.keywords || [])
+  keywordForm.whitelist_rules = normalizeWhitelistRules(config.whitelist_rules || [], config.whitelist || [])
+  syncKeywordSimpleTextFromRules()
   keywordForm.regex_rules = Array.isArray(config.regex_rules) ? config.regex_rules.map((rule) => ({ ...rule })) : []
   keywordForm.block_status = config.block_status || 403
   keywordForm.block_message = config.block_message || defaultKeywordFilterBlockMessage
   keywordForm.hit_retention_days = config.hit_retention_days || 180
+  keywordRuleViewMode.value = hasAdvancedKeywordConfig(config) ? 'advanced' : 'simple'
 }
 
 async function loadGroups(options: { silent?: boolean } = {}) {
@@ -1605,20 +1717,40 @@ async function loadLogs() {
   }
 }
 
+function buildKeywordPayload(): UpdateKeywordFilterConfig {
+  syncKeywordRuleStateForCurrentMode()
+  const keywordRules = sanitizeKeywordRules(keywordForm.keyword_rules)
+  const whitelistRules = pruneWhitelistTargets(
+    sanitizeWhitelistRules(keywordForm.whitelist_rules),
+    keywordRules,
+  )
+  keywordForm.keyword_rules = keywordRules
+  keywordForm.whitelist_rules = whitelistRules
+  syncKeywordSimpleTextFromRules()
+
+  return {
+    enabled: keywordForm.enabled,
+    all_groups: keywordForm.all_groups,
+    group_ids: keywordForm.all_groups ? [] : [...keywordForm.group_ids],
+    keywords: keywordRules.map((rule) => rule.pattern),
+    whitelist: whitelistRules.map((rule) => rule.pattern),
+    keyword_rules: keywordRules,
+    whitelist_rules: whitelistRules,
+    regex_rules: keywordForm.regex_rules.map((rule) => ({ ...rule })),
+    block_status: Number(keywordForm.block_status) || 403,
+    block_message: keywordForm.block_message || defaultKeywordFilterBlockMessage,
+    hit_retention_days: Number(keywordForm.hit_retention_days) || 180,
+  }
+}
+
 async function saveKeywordConfig() {
   keywordSaving.value = true
   try {
-    const payload: UpdateKeywordFilterConfig = {
-      enabled: keywordForm.enabled,
-      all_groups: keywordForm.all_groups,
-      group_ids: keywordForm.all_groups ? [] : [...keywordForm.group_ids],
-      keywords: parseLines(keywordForm.keywords_text),
-      whitelist: parseLines(keywordForm.whitelist_text),
-      regex_rules: keywordForm.regex_rules.map((rule) => ({ ...rule })),
-      block_status: Number(keywordForm.block_status) || 403,
-      block_message: keywordForm.block_message || defaultKeywordFilterBlockMessage,
-      hit_retention_days: Number(keywordForm.hit_retention_days) || 180,
+    if (keywordGroupScopeInvalid.value) {
+      appStore.showError(t('admin.riskControl.keyword.groupScopeEmptyHint'))
+      return
     }
+    const payload = buildKeywordPayload()
     const updated = await adminAPI.riskControl.updateKeywordFilterConfig(payload)
     applyKeywordConfig(updated)
     keywordSettingsOpen.value = false
@@ -1638,17 +1770,7 @@ async function testKeywordFilter() {
   try {
     keywordTestResult.value = await adminAPI.riskControl.testKeywordFilter({
       text: keywordTestText.value,
-      config: {
-        enabled: keywordForm.enabled,
-        all_groups: keywordForm.all_groups,
-        group_ids: keywordForm.all_groups ? [] : [...keywordForm.group_ids],
-        keywords: parseLines(keywordForm.keywords_text),
-        whitelist: parseLines(keywordForm.whitelist_text),
-        regex_rules: keywordForm.regex_rules.map((rule) => ({ ...rule })),
-        block_status: Number(keywordForm.block_status) || 403,
-        block_message: keywordForm.block_message || defaultKeywordFilterBlockMessage,
-        hit_retention_days: Number(keywordForm.hit_retention_days) || 180,
-      },
+      config: buildKeywordPayload(),
     })
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.keyword.testFailed')))
@@ -1752,6 +1874,37 @@ function addKeywordRegexRule() {
 
 function removeKeywordRegexRule(index: number) {
   keywordForm.regex_rules.splice(index, 1)
+}
+
+function addKeywordRule() {
+  keywordForm.keyword_rules.push(createKeywordRule('', 'keyword'))
+}
+
+function removeKeywordRule(index: number) {
+  keywordForm.keyword_rules.splice(index, 1)
+  const validIDs = new Set(keywordForm.keyword_rules.map((rule) => rule.id).filter(Boolean))
+  keywordForm.whitelist_rules = keywordForm.whitelist_rules.map((rule) => ({
+    ...rule,
+    target_rule_ids: rule.target_rule_ids.filter((id) => validIDs.has(id)),
+  }))
+}
+
+function addWhitelistRule() {
+  keywordForm.whitelist_rules.push(createWhitelistRule(''))
+}
+
+function removeWhitelistRule(index: number) {
+  keywordForm.whitelist_rules.splice(index, 1)
+}
+
+function toggleWhitelistTarget(rule: KeywordFilterWhitelistRule, targetID: string) {
+  if (!targetID) return
+  const index = rule.target_rule_ids.indexOf(targetID)
+  if (index >= 0) {
+    rule.target_rule_ids.splice(index, 1)
+  } else {
+    rule.target_rule_ids.push(targetID)
+  }
 }
 
 function toggleKeywordGroup(groupID: number) {
@@ -2048,6 +2201,246 @@ function parseLines(value: string): string[] {
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter((item, index, arr) => item && arr.indexOf(item) === index)
+}
+
+function switchKeywordRuleViewMode(mode: KeywordRuleViewMode) {
+  if (keywordRuleViewMode.value === mode) return
+  syncKeywordRuleStateForCurrentMode()
+  keywordRuleViewMode.value = mode
+}
+
+function syncKeywordRuleStateForCurrentMode() {
+  if (keywordRuleViewMode.value === 'simple') {
+    syncKeywordRulesFromSimpleText()
+  } else {
+    syncKeywordSimpleTextFromRules()
+  }
+  cleanupKeywordWhitelistTargets()
+}
+
+function syncKeywordRulesFromSimpleText() {
+  const keywordRules = mergeKeywordRulesFromLines(parseLines(keywordForm.keywords_text), keywordForm.keyword_rules)
+  keywordForm.keyword_rules = keywordRules
+  keywordForm.whitelist_rules = pruneWhitelistTargets(
+    mergeWhitelistRulesFromLines(parseLines(keywordForm.whitelist_text), keywordForm.whitelist_rules),
+    keywordRules,
+  )
+}
+
+function syncKeywordSimpleTextFromRules() {
+  keywordForm.keyword_rules = sanitizeKeywordRules(keywordForm.keyword_rules)
+  keywordForm.whitelist_rules = pruneWhitelistTargets(
+    sanitizeWhitelistRules(keywordForm.whitelist_rules),
+    keywordForm.keyword_rules,
+  )
+  keywordForm.keywords_text = keywordForm.keyword_rules.map((rule) => rule.pattern).join('\n')
+  keywordForm.whitelist_text = keywordForm.whitelist_rules.map((rule) => rule.pattern).join('\n')
+}
+
+function cleanupKeywordWhitelistTargets() {
+  keywordForm.whitelist_rules = pruneWhitelistTargets(keywordForm.whitelist_rules, keywordForm.keyword_rules)
+}
+
+function mergeKeywordRulesFromLines(lines: string[], existingRules: KeywordFilterRule[]): KeywordFilterRule[] {
+  const existingByPattern = new Map<string, KeywordFilterRule>()
+  existingRules.forEach((rule) => {
+    const pattern = normalizeKeywordPattern(rule.pattern)
+    if (pattern && !existingByPattern.has(pattern)) {
+      existingByPattern.set(pattern, rule)
+    }
+  })
+
+  return lines.map((pattern, index) => {
+    const existing = existingByPattern.get(pattern)
+    return existing
+      ? normalizeKeywordRule({ ...existing, pattern }, index)
+      : createKeywordRule(pattern, 'keyword', index)
+  })
+}
+
+function mergeWhitelistRulesFromLines(lines: string[], existingRules: KeywordFilterWhitelistRule[]): KeywordFilterWhitelistRule[] {
+  const existingByPattern = new Map<string, KeywordFilterWhitelistRule>()
+  existingRules.forEach((rule) => {
+    const pattern = normalizeKeywordPattern(rule.pattern)
+    if (pattern && !existingByPattern.has(pattern)) {
+      existingByPattern.set(pattern, rule)
+    }
+  })
+
+  return lines.map((pattern, index) => {
+    const existing = existingByPattern.get(pattern)
+    return existing
+      ? normalizeWhitelistRule({ ...existing, pattern }, index)
+      : createWhitelistRule(pattern, index)
+  })
+}
+
+function sanitizeKeywordRules(rules: KeywordFilterRule[]): KeywordFilterRule[] {
+  const seenPatterns = new Set<string>()
+  return rules.reduce<KeywordFilterRule[]>((items, rule) => {
+    const pattern = normalizeKeywordPattern(rule.pattern)
+    if (!pattern || seenPatterns.has(pattern)) return items
+    seenPatterns.add(pattern)
+    items.push(normalizeKeywordRule({ ...rule, pattern }, items.length))
+    return items
+  }, [])
+}
+
+function sanitizeWhitelistRules(rules: KeywordFilterWhitelistRule[]): KeywordFilterWhitelistRule[] {
+  const seenPatterns = new Set<string>()
+  return rules.reduce<KeywordFilterWhitelistRule[]>((items, rule) => {
+    const pattern = normalizeKeywordPattern(rule.pattern)
+    if (!pattern || seenPatterns.has(pattern)) return items
+    seenPatterns.add(pattern)
+    items.push(normalizeWhitelistRule({ ...rule, pattern }, items.length))
+    return items
+  }, [])
+}
+
+function normalizeKeywordRule(rule: KeywordFilterRule, index: number): KeywordFilterRule {
+  const pattern = normalizeKeywordPattern(rule.pattern)
+  return {
+    id: rule.id?.trim() || createKeywordRuleID('keyword', pattern || String(index), index),
+    pattern,
+    match_mode: normalizeMatchMode(rule.match_mode),
+    enabled: rule.enabled ?? true,
+    action: rule.action || 'block',
+    severity: rule.severity || '',
+  }
+}
+
+function normalizeWhitelistRule(rule: KeywordFilterWhitelistRule, index: number): KeywordFilterWhitelistRule {
+  const pattern = normalizeKeywordPattern(rule.pattern)
+  return {
+    id: rule.id?.trim() || createKeywordRuleID('whitelist', pattern || String(index), index),
+    pattern,
+    match_mode: normalizeMatchMode(rule.match_mode),
+    target_rule_ids: Array.isArray(rule.target_rule_ids) ? [...rule.target_rule_ids] : [],
+    enabled: rule.enabled ?? true,
+  }
+}
+
+function pruneWhitelistTargets(
+  whitelistRules: KeywordFilterWhitelistRule[],
+  keywordRules: KeywordFilterRule[],
+): KeywordFilterWhitelistRule[] {
+  const validIDs = new Set(keywordRules.map((rule) => rule.id).filter(Boolean))
+  return whitelistRules.map((rule) => ({
+    ...rule,
+    target_rule_ids: rule.target_rule_ids.filter((id) => validIDs.has(id)),
+  }))
+}
+
+function normalizeKeywordPattern(pattern: string | undefined): string {
+  return (pattern || '').trim()
+}
+
+function normalizeKeywordRules(rules: KeywordFilterRule[], fallbackKeywords: string[]): KeywordFilterRule[] {
+  const source = Array.isArray(rules) && rules.length > 0
+    ? rules
+    : rulesFromLines(fallbackKeywords || [], 'legacy')
+  return sanitizeKeywordRules(source)
+}
+
+function hasAdvancedKeywordConfig(config: KeywordFilterConfig): boolean {
+  const keywordRules = Array.isArray(config.keyword_rules) ? config.keyword_rules : []
+  const whitelistRules = Array.isArray(config.whitelist_rules) ? config.whitelist_rules : []
+  return keywordRules.some((rule) => {
+    return normalizeMatchMode(rule.match_mode) !== 'auto' ||
+      rule.enabled === false ||
+      Boolean(rule.severity) ||
+      (rule.action && rule.action !== 'block')
+  }) || whitelistRules.some((rule) => {
+    return normalizeMatchMode(rule.match_mode) !== 'auto' ||
+      rule.enabled === false ||
+      (Array.isArray(rule.target_rule_ids) && rule.target_rule_ids.length > 0)
+  })
+}
+
+function normalizeWhitelistRules(rules: KeywordFilterWhitelistRule[], fallbackWhitelist: string[]): KeywordFilterWhitelistRule[] {
+  const source = Array.isArray(rules) && rules.length > 0
+    ? rules
+    : whitelistRulesFromLines(fallbackWhitelist || [])
+  return sanitizeWhitelistRules(source)
+}
+
+function rulesFromLines(lines: string[], prefix: string): KeywordFilterRule[] {
+  return lines.map((pattern, index) => createKeywordRule(pattern, prefix, index))
+}
+
+function whitelistRulesFromLines(lines: string[]): KeywordFilterWhitelistRule[] {
+  return lines.map((pattern, index) => createWhitelistRule(pattern, index))
+}
+
+function createKeywordRule(pattern = '', prefix = 'keyword', index = Date.now()): KeywordFilterRule {
+  return {
+    id: createKeywordRuleID(prefix, pattern || String(index), index),
+    pattern,
+    match_mode: 'auto',
+    enabled: true,
+    action: 'block',
+    severity: '',
+  }
+}
+
+function createWhitelistRule(pattern = '', index = Date.now()): KeywordFilterWhitelistRule {
+  return {
+    id: createKeywordRuleID('whitelist', pattern || String(index), index),
+    pattern,
+    match_mode: 'auto',
+    target_rule_ids: [],
+    enabled: true,
+  }
+}
+
+function createKeywordRuleID(prefix: string, pattern: string, index: number): string {
+  const base = `${prefix}_${index}_${pattern}`
+  let hash = 0
+  for (let i = 0; i < base.length; i += 1) {
+    hash = ((hash << 5) - hash + base.charCodeAt(i)) | 0
+  }
+  return `${prefix}_${Math.abs(hash).toString(36)}`
+}
+
+function normalizeMatchMode(mode: string | undefined): KeywordFilterMatchMode {
+  const allowed: KeywordFilterMatchMode[] = ['auto', 'contains', 'fuzzy', 'token', 'exact_phrase', 'cjk_token']
+  return allowed.includes(mode as KeywordFilterMatchMode) ? mode as KeywordFilterMatchMode : 'auto'
+}
+
+function matchModeLabel(mode: string): string {
+  const found = keywordMatchModeOptions.value.find((option) => option.value === mode)
+  return found?.label ?? mode
+}
+
+function kt(key: string): string {
+  const fullKey = `admin.riskControl.keyword.${key}`
+  const translated = t(fullKey)
+  if (translated !== fullKey) return translated
+  const fallback: Record<string, string> = {
+    ruleEditor: 'Keyword Rules',
+    ruleEditorHint: 'Use simple multiline input, or switch to advanced rules to choose match modes.',
+    simpleRules: 'Simple',
+    advancedRules: 'Advanced',
+    keywordRules: 'Blocked Rules',
+    whitelistRules: 'Whitelist Rules',
+    addKeywordRule: 'Add Blocked Rule',
+    addWhitelistRule: 'Add Whitelist Rule',
+    rulePattern: 'Pattern',
+    noKeywordRules: 'No keyword rules',
+    noWhitelistRules: 'No whitelist rules',
+    whitelistTargetsAll: 'Applies to all blocked rules',
+    whitelistTargetsSome: 'Applies to selected blocked rules',
+    matchModeAuto: 'Auto',
+    matchModeContains: 'Contains',
+    matchModeFuzzy: 'Fuzzy',
+    matchModeToken: 'Token',
+    matchModeExactPhrase: 'Exact phrase',
+    matchModeCJKToken: 'CJK token',
+    testRule: 'Rule',
+    testSegment: 'Segment',
+    testExcerpt: 'Excerpt',
+  }
+  return fallback[key] ?? key
 }
 
 function violationCountText(row: ContentModerationLog): string {

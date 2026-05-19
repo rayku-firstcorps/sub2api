@@ -28,6 +28,13 @@ const (
 
 	KeywordFilterActionBlock = "block"
 
+	KeywordFilterMatchModeAuto        = "auto"
+	KeywordFilterMatchModeContains    = "contains"
+	KeywordFilterMatchModeFuzzy       = "fuzzy"
+	KeywordFilterMatchModeToken       = "token"
+	KeywordFilterMatchModeExactPhrase = "exact_phrase"
+	KeywordFilterMatchModeCJKToken    = "cjk_token"
+
 	defaultKeywordFilterBlockStatus      = http.StatusForbidden
 	defaultKeywordFilterBlockMessage     = "输入内容命中关键词过滤规则，请调整后重试"
 	defaultKeywordFilterHitRetentionDays = 180
@@ -41,15 +48,17 @@ const (
 )
 
 type KeywordFilterConfig struct {
-	Enabled          bool                     `json:"enabled"`
-	AllGroups        bool                     `json:"all_groups"`
-	GroupIDs         []int64                  `json:"group_ids"`
-	Keywords         []string                 `json:"keywords"`
-	Whitelist        []string                 `json:"whitelist"`
-	RegexRules       []KeywordFilterRegexRule `json:"regex_rules"`
-	BlockStatus      int                      `json:"block_status"`
-	BlockMessage     string                   `json:"block_message"`
-	HitRetentionDays int                      `json:"hit_retention_days"`
+	Enabled          bool                         `json:"enabled"`
+	AllGroups        bool                         `json:"all_groups"`
+	GroupIDs         []int64                      `json:"group_ids"`
+	Keywords         []string                     `json:"keywords"`
+	Whitelist        []string                     `json:"whitelist"`
+	KeywordRules     []KeywordFilterRule          `json:"keyword_rules"`
+	WhitelistRules   []KeywordFilterWhitelistRule `json:"whitelist_rules"`
+	RegexRules       []KeywordFilterRegexRule     `json:"regex_rules"`
+	BlockStatus      int                          `json:"block_status"`
+	BlockMessage     string                       `json:"block_message"`
+	HitRetentionDays int                          `json:"hit_retention_days"`
 }
 
 type KeywordFilterConfigView = KeywordFilterConfig
@@ -61,16 +70,35 @@ type KeywordFilterRegexRule struct {
 	Builtin bool   `json:"builtin,omitempty"`
 }
 
+type KeywordFilterRule struct {
+	ID        string `json:"id"`
+	Pattern   string `json:"pattern"`
+	MatchMode string `json:"match_mode"`
+	Enabled   bool   `json:"enabled"`
+	Action    string `json:"action"`
+	Severity  string `json:"severity,omitempty"`
+}
+
+type KeywordFilterWhitelistRule struct {
+	ID            string   `json:"id"`
+	Pattern       string   `json:"pattern"`
+	MatchMode     string   `json:"match_mode"`
+	TargetRuleIDs []string `json:"target_rule_ids"`
+	Enabled       bool     `json:"enabled"`
+}
+
 type UpdateKeywordFilterConfigInput struct {
-	Enabled          *bool                     `json:"enabled"`
-	AllGroups        *bool                     `json:"all_groups"`
-	GroupIDs         *[]int64                  `json:"group_ids"`
-	Keywords         *[]string                 `json:"keywords"`
-	Whitelist        *[]string                 `json:"whitelist"`
-	RegexRules       *[]KeywordFilterRegexRule `json:"regex_rules"`
-	BlockStatus      *int                      `json:"block_status"`
-	BlockMessage     *string                   `json:"block_message"`
-	HitRetentionDays *int                      `json:"hit_retention_days"`
+	Enabled          *bool                         `json:"enabled"`
+	AllGroups        *bool                         `json:"all_groups"`
+	GroupIDs         *[]int64                      `json:"group_ids"`
+	Keywords         *[]string                     `json:"keywords"`
+	Whitelist        *[]string                     `json:"whitelist"`
+	KeywordRules     *[]KeywordFilterRule          `json:"keyword_rules"`
+	WhitelistRules   *[]KeywordFilterWhitelistRule `json:"whitelist_rules"`
+	RegexRules       *[]KeywordFilterRegexRule     `json:"regex_rules"`
+	BlockStatus      *int                          `json:"block_status"`
+	BlockMessage     *string                       `json:"block_message"`
+	HitRetentionDays *int                          `json:"hit_retention_days"`
 }
 
 type KeywordFilterCheckInput struct {
@@ -144,13 +172,21 @@ type KeywordFilterTestInput struct {
 }
 
 type KeywordFilterTestResult struct {
-	Blocked        bool     `json:"blocked"`
-	MatchType      string   `json:"match_type"`
-	RuleName       string   `json:"rule_name"`
-	MatchedText    string   `json:"matched_text"`
-	NormalizedText string   `json:"normalized_text"`
-	RegexText      string   `json:"regex_text"`
-	Segments       []string `json:"segments"`
+	Blocked           bool     `json:"blocked"`
+	Whitelisted       bool     `json:"whitelisted"`
+	MatchType         string   `json:"match_type"`
+	RuleID            string   `json:"rule_id"`
+	RuleName          string   `json:"rule_name"`
+	MatchedText       string   `json:"matched_text"`
+	MatchMode         string   `json:"match_mode"`
+	ResolvedMatchMode string   `json:"resolved_match_mode"`
+	SegmentIndex      int      `json:"segment_index"`
+	MessageIndex      int      `json:"message_index"`
+	PartIndex         int      `json:"part_index"`
+	SegmentText       string   `json:"segment_text"`
+	NormalizedText    string   `json:"normalized_text"`
+	RegexText         string   `json:"regex_text"`
+	Segments          []string `json:"segments"`
 }
 
 type KeywordFilterCleanupResult struct {
@@ -246,24 +282,22 @@ func (s *KeywordFilterService) Check(ctx context.Context, input KeywordFilterChe
 	if !cfg.Enabled || !cfg.includesGroup(input.GroupID) {
 		return allow, nil
 	}
-	texts := ExtractKeywordFilterTexts(input.Protocol, input.Body)
-	if len(texts) == 0 {
+	segments := ExtractKeywordFilterSegments(input.Protocol, input.Body)
+	if len(segments) == 0 {
 		return allow, nil
 	}
-	joined := strings.Join(texts, "\n")
-	normalizedInput := s.normalizeText(joined)
-	if strings.TrimSpace(normalizedInput.Text) == "" && strings.TrimSpace(normalizedInput.RegexText) == "" {
-		return allow, nil
-	}
-	match := s.match(cfg, normalizedInput)
+	normalizedSegments := s.normalizeSegments(segments)
+	match := s.matchSegments(cfg, normalizedSegments)
 	if match == nil {
 		return allow, nil
 	}
-	inputHash := keywordFilterInputHash(normalizedInput.Text)
+	joinedRaw := joinKeywordFilterSegmentTexts(segments)
+	joinedNormalized := joinKeywordFilterNormalizedTexts(normalizedSegments)
+	inputHash := keywordFilterInputHash(joinedNormalized)
 	if inputHash == "" {
-		inputHash = keywordFilterInputHash(normalizedInput.RegexText)
+		inputHash = keywordFilterInputHash(joinedRaw)
 	}
-	log := s.buildLog(input, cfg, match, joined, inputHash)
+	log := s.buildLog(input, cfg, match, joinedRaw, inputHash)
 	if err := s.repo.CreateLog(ctx, log); err != nil {
 		slog.Warn("keyword_filter.create_log_failed", "error", err)
 	}
@@ -293,18 +327,31 @@ func (s *KeywordFilterService) Test(ctx context.Context, input KeywordFilterTest
 		applyKeywordFilterConfigPatch(cfg, *input.Config)
 		cfg.normalize()
 	}
-	normalized := s.normalizeText(input.Text)
-	match := s.match(cfg, normalized)
+	segments := []KeywordFilterTextSegment{{Text: input.Text, SegmentIndex: 0, MessageIndex: -1, PartIndex: -1}}
+	normalizedSegments := s.normalizeSegments(segments)
+	match := s.matchSegments(cfg, normalizedSegments)
+	normalized := normalizedKeywordText{}
+	if len(normalizedSegments) > 0 {
+		normalized = normalizedSegments[0].Normalized
+	}
 	result := &KeywordFilterTestResult{
 		NormalizedText: normalized.Text,
 		RegexText:      normalized.RegexText,
-		Segments:       splitKeywordFilterSegments(normalized.Text),
+		Segments:       keywordFilterTestSegmentTexts(normalizedSegments),
 	}
 	if match != nil {
 		result.Blocked = true
+		result.Whitelisted = match.Whitelisted
 		result.MatchType = match.MatchType
+		result.RuleID = match.RuleID
 		result.RuleName = match.RuleName
 		result.MatchedText = match.DisplayText
+		result.MatchMode = match.MatchMode
+		result.ResolvedMatchMode = match.ResolvedMatchMode
+		result.SegmentIndex = match.SegmentIndex
+		result.MessageIndex = match.MessageIndex
+		result.PartIndex = match.PartIndex
+		result.SegmentText = match.SegmentText
 	}
 	return result, nil
 }
@@ -362,19 +409,22 @@ func (s *KeywordFilterService) validateConfig(ctx context.Context, cfg *KeywordF
 		return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_CONFIG", "关键词过滤配置不能为空")
 	}
 	cfg.normalize()
+	if err := validateKeywordFilterRuleModes(cfg); err != nil {
+		return err
+	}
 	if cfg.BlockStatus < 400 || cfg.BlockStatus > 599 {
 		return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_BLOCK_STATUS", "拦截 HTTP 状态码必须在 400-599 之间")
 	}
-	if len(cfg.Keywords) > maxKeywordFilterRules || len(cfg.Whitelist) > maxKeywordFilterRules || len(cfg.RegexRules) > maxKeywordFilterRules {
+	if len(cfg.KeywordRules) > maxKeywordFilterRules || len(cfg.WhitelistRules) > maxKeywordFilterRules || len(cfg.RegexRules) > maxKeywordFilterRules {
 		return infraerrors.BadRequest("KEYWORD_FILTER_RULE_LIMIT_EXCEEDED", "关键词过滤规则数量超过限制")
 	}
-	for _, keyword := range cfg.Keywords {
-		if utf8.RuneCountInString(keyword) > maxKeywordFilterPatternRunes {
+	for _, rule := range cfg.KeywordRules {
+		if utf8.RuneCountInString(rule.Pattern) > maxKeywordFilterPatternRunes {
 			return infraerrors.BadRequest("KEYWORD_FILTER_KEYWORD_TOO_LONG", "关键词过长")
 		}
 	}
-	for _, keyword := range cfg.Whitelist {
-		if utf8.RuneCountInString(keyword) > maxKeywordFilterPatternRunes {
+	for _, rule := range cfg.WhitelistRules {
+		if utf8.RuneCountInString(rule.Pattern) > maxKeywordFilterPatternRunes {
 			return infraerrors.BadRequest("KEYWORD_FILTER_WHITELIST_TOO_LONG", "白名单词过长")
 		}
 	}
@@ -399,26 +449,100 @@ func (s *KeywordFilterService) validateConfig(ctx context.Context, cfg *KeywordF
 	return nil
 }
 
-func (s *KeywordFilterService) match(cfg *KeywordFilterConfig, input normalizedKeywordText) *keywordFilterMatch {
-	if cfg == nil || (strings.TrimSpace(input.Text) == "" && strings.TrimSpace(input.RegexText) == "") {
+func validateKeywordFilterRuleModes(cfg *KeywordFilterConfig) error {
+	if cfg == nil {
 		return nil
 	}
-	whitelist := s.normalizedWhitelistRanges(cfg.Whitelist, input.Text)
-	if strings.TrimSpace(input.Text) != "" {
-		matcher := newKeywordFilterMatcher(s.normalizedPatterns(cfg.Keywords))
-		for _, found := range matcher.FindAll(input.Text) {
-			if !rangeCoveredByAny(found.Start, found.End, whitelist) {
-				display := input.originalForNormalizedRange(found.Start, found.End)
-				return &keywordFilterMatch{
-					MatchType:   KeywordFilterMatchTypeKeyword,
-					RuleName:    found.Pattern,
-					MatchedText: found.Pattern,
-					DisplayText: sanitizeKeywordFilterMatchedText(display),
+	for _, rule := range cfg.KeywordRules {
+		if !isValidKeywordFilterMatchMode(rule.MatchMode) {
+			return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_MATCH_MODE", fmt.Sprintf("Invalid keyword match mode: %s", rule.MatchMode))
+		}
+	}
+	for _, rule := range cfg.WhitelistRules {
+		if !isValidKeywordFilterMatchMode(rule.MatchMode) {
+			return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_MATCH_MODE", fmt.Sprintf("Invalid whitelist match mode: %s", rule.MatchMode))
+		}
+	}
+	return nil
+}
+
+type keywordFilterNormalizedSegment struct {
+	Segment    KeywordFilterTextSegment
+	Normalized normalizedKeywordText
+}
+
+func (s *KeywordFilterService) normalizeSegments(segments []KeywordFilterTextSegment) []keywordFilterNormalizedSegment {
+	out := make([]keywordFilterNormalizedSegment, 0, len(segments))
+	for _, segment := range segments {
+		normalized := s.normalizeText(segment.Text)
+		if strings.TrimSpace(normalized.Text) == "" && strings.TrimSpace(normalized.RegexText) == "" {
+			continue
+		}
+		out = append(out, keywordFilterNormalizedSegment{Segment: segment, Normalized: normalized})
+	}
+	return out
+}
+
+func (s *KeywordFilterService) match(cfg *KeywordFilterConfig, input normalizedKeywordText) *keywordFilterMatch {
+	if cfg == nil {
+		return nil
+	}
+	segments := []keywordFilterNormalizedSegment{{
+		Segment:    KeywordFilterTextSegment{Text: input.Original, SegmentIndex: 0, MessageIndex: -1, PartIndex: -1},
+		Normalized: input,
+	}}
+	return s.matchSegments(cfg, segments)
+}
+
+func (s *KeywordFilterService) matchSegments(cfg *KeywordFilterConfig, segments []keywordFilterNormalizedSegment) *keywordFilterMatch {
+	if cfg == nil || len(segments) == 0 {
+		return nil
+	}
+	cfg.normalize()
+	keywordRules := cfg.effectiveKeywordRules()
+	whitelistRules := cfg.effectiveWhitelistRules()
+	matcher, rulePatterns := s.buildKeywordRuleMatcher(keywordRules)
+	for _, segment := range segments {
+		input := segment.Normalized
+		if strings.TrimSpace(input.Text) != "" && matcher != nil {
+			for _, found := range matcher.FindAll(input.Text) {
+				for _, rule := range rulePatterns[found.Pattern] {
+					resolvedMode := resolveKeywordFilterMatchMode(rule.Pattern, rule.MatchMode)
+					matchRange, ok := s.validateKeywordRuleMatch(rule, resolvedMode, input, found.Start, found.End)
+					if !ok {
+						continue
+					}
+					display := input.originalForNormalizedRange(matchRange.Start, matchRange.End)
+					match := &keywordFilterMatch{
+						MatchType:         KeywordFilterMatchTypeKeyword,
+						RuleID:            rule.ID,
+						RuleName:          keywordFilterRuleDisplayName(rule, resolvedMode),
+						MatchedText:       rule.Pattern,
+						DisplayText:       sanitizeKeywordFilterMatchedText(display),
+						MatchMode:         normalizeKeywordFilterMatchMode(rule.MatchMode),
+						ResolvedMatchMode: resolvedMode,
+						SegmentIndex:      segment.Segment.SegmentIndex,
+						MessageIndex:      segment.Segment.MessageIndex,
+						PartIndex:         segment.Segment.PartIndex,
+						SegmentText:       trimRunes(segment.Segment.Text, maxKeywordFilterExcerptRunes),
+					}
+					if s.keywordMatchCoveredByWhitelist(match, matchRange, input, whitelistRules) {
+						match.Whitelisted = true
+						continue
+					}
+					return match
 				}
 			}
 		}
+		if match := s.matchRegexRules(cfg.RegexRules, input, segment.Segment); match != nil {
+			return match
+		}
 	}
-	for _, rule := range cfg.RegexRules {
+	return nil
+}
+
+func (s *KeywordFilterService) matchRegexRules(rules []KeywordFilterRegexRule, input normalizedKeywordText, segment KeywordFilterTextSegment) *keywordFilterMatch {
+	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
 		}
@@ -430,10 +554,16 @@ func (s *KeywordFilterService) match(cfg *KeywordFilterConfig, input normalizedK
 		if len(loc) == 2 {
 			display := input.originalForRegexRange(loc[0], loc[1])
 			return &keywordFilterMatch{
-				MatchType:   KeywordFilterMatchTypeRegex,
-				RuleName:    rule.Name,
-				MatchedText: rule.Name,
-				DisplayText: sanitizeKeywordFilterMatchedText(display),
+				MatchType:         KeywordFilterMatchTypeRegex,
+				RuleName:          rule.Name,
+				MatchedText:       rule.Name,
+				DisplayText:       sanitizeKeywordFilterMatchedText(display),
+				SegmentIndex:      segment.SegmentIndex,
+				MessageIndex:      segment.MessageIndex,
+				PartIndex:         segment.PartIndex,
+				SegmentText:       trimRunes(segment.Text, maxKeywordFilterExcerptRunes),
+				MatchMode:         KeywordFilterMatchTypeRegex,
+				ResolvedMatchMode: KeywordFilterMatchTypeRegex,
 			}
 		}
 	}
@@ -484,6 +614,420 @@ func (s *KeywordFilterService) normalizedWhitelistRanges(patterns []string, text
 	return ranges
 }
 
+func (s *KeywordFilterService) buildKeywordRuleMatcher(rules []KeywordFilterRule) (*keywordFilterMatcher, map[string][]KeywordFilterRule) {
+	patternMap := make(map[string][]KeywordFilterRule)
+	patterns := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		if !rule.Enabled || strings.TrimSpace(rule.Pattern) == "" {
+			continue
+		}
+		normalized := s.normalizeText(rule.Pattern).Text
+		if normalized == "" {
+			continue
+		}
+		if _, ok := patternMap[normalized]; !ok {
+			patterns = append(patterns, normalized)
+		}
+		patternMap[normalized] = append(patternMap[normalized], rule)
+	}
+	if len(patterns) == 0 {
+		return nil, patternMap
+	}
+	return newKeywordFilterMatcher(patterns), patternMap
+}
+
+func (s *KeywordFilterService) validateKeywordRuleMatch(rule KeywordFilterRule, resolvedMode string, input normalizedKeywordText, start int, end int) (keywordFilterRange, bool) {
+	pattern := s.normalizeText(rule.Pattern).Text
+	if pattern == "" || start < 0 || end <= start {
+		return keywordFilterRange{}, false
+	}
+	matchRange := keywordFilterRange{Start: start, End: end}
+	if resolvedMode != KeywordFilterMatchModeContains && keywordFilterMatchCrossesHardPunctuation(input, matchRange) {
+		return keywordFilterRange{}, false
+	}
+	switch resolvedMode {
+	case KeywordFilterMatchModeContains, KeywordFilterMatchModeFuzzy:
+		return matchRange, true
+	case KeywordFilterMatchModeToken:
+		if keywordFilterHasLatinDigitBoundary(input, start, end) {
+			return matchRange, true
+		}
+	case KeywordFilterMatchModeExactPhrase:
+		if keywordFilterPhraseAllowed(rule.Pattern, input, matchRange) {
+			return matchRange, true
+		}
+	case KeywordFilterMatchModeCJKToken:
+		if keywordFilterCJKTokenAllowed(rule.Pattern, input, matchRange) {
+			return matchRange, true
+		}
+	default:
+		return matchRange, true
+	}
+	return keywordFilterRange{}, false
+}
+
+func keywordFilterMatchCrossesHardPunctuation(input normalizedKeywordText, matchRange keywordFilterRange) bool {
+	return keywordFilterContainsHardPunctuation(input.originalForNormalizedRange(matchRange.Start, matchRange.End))
+}
+
+func (s *KeywordFilterService) keywordMatchCoveredByWhitelist(match *keywordFilterMatch, matchRange keywordFilterRange, input normalizedKeywordText, whitelistRules []KeywordFilterWhitelistRule) bool {
+	for _, rule := range whitelistRules {
+		if !rule.Enabled || strings.TrimSpace(rule.Pattern) == "" {
+			continue
+		}
+		if len(rule.TargetRuleIDs) > 0 && !keywordFilterStringInSlice(match.RuleID, rule.TargetRuleIDs) {
+			continue
+		}
+		resolvedMode := resolveKeywordFilterMatchMode(rule.Pattern, rule.MatchMode)
+		pattern := s.normalizeText(rule.Pattern).Text
+		if pattern == "" {
+			continue
+		}
+		start := 0
+		for {
+			idx := strings.Index(input.Text[start:], pattern)
+			if idx < 0 {
+				break
+			}
+			begin := start + idx
+			end := begin + len(pattern)
+			whitelistRange, ok := s.validateWhitelistRuleMatch(rule, resolvedMode, input, begin, end)
+			if ok && whitelistRange.Start <= matchRange.Start && whitelistRange.End >= matchRange.End {
+				return true
+			}
+			start = end
+			if start >= len(input.Text) {
+				break
+			}
+		}
+	}
+	return false
+}
+
+func (s *KeywordFilterService) validateWhitelistRuleMatch(rule KeywordFilterWhitelistRule, resolvedMode string, input normalizedKeywordText, start int, end int) (keywordFilterRange, bool) {
+	filterRule := KeywordFilterRule{
+		ID:        rule.ID,
+		Pattern:   rule.Pattern,
+		MatchMode: rule.MatchMode,
+		Enabled:   rule.Enabled,
+		Action:    KeywordFilterActionBlock,
+	}
+	return s.validateKeywordRuleMatch(filterRule, resolvedMode, input, start, end)
+}
+
+func InferKeywordFilterMatchMode(pattern string) string {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return KeywordFilterMatchModeContains
+	}
+	if keywordFilterHasObviousSeparator(pattern) {
+		return KeywordFilterMatchModeExactPhrase
+	}
+	var hanCount int
+	var latinDigitCount int
+	var otherCount int
+	for _, r := range pattern {
+		folded := foldKeywordFilterWidthRune(r)
+		if folded == 0 {
+			folded = r
+		}
+		switch {
+		case keywordFilterIsHan(folded):
+			hanCount++
+		case keywordFilterIsLatinOrDigit(folded):
+			latinDigitCount++
+		case unicode.IsSpace(folded) || keywordFilterIsWeakPunctuation(folded):
+			otherCount++
+		default:
+			otherCount++
+		}
+	}
+	switch {
+	case hanCount > 0 && latinDigitCount > 0:
+		return KeywordFilterMatchModeExactPhrase
+	case hanCount > 0 && latinDigitCount == 0 && otherCount == 0:
+		switch {
+		case hanCount <= 2:
+			return KeywordFilterMatchModeCJKToken
+		case hanCount <= 4:
+			return KeywordFilterMatchModeExactPhrase
+		default:
+			return KeywordFilterMatchModeContains
+		}
+	case latinDigitCount > 0 && hanCount == 0:
+		return KeywordFilterMatchModeToken
+	default:
+		return KeywordFilterMatchModeContains
+	}
+}
+
+func resolveKeywordFilterMatchMode(pattern string, mode string) string {
+	mode = normalizeKeywordFilterMatchMode(mode)
+	if mode == KeywordFilterMatchModeAuto {
+		return InferKeywordFilterMatchMode(pattern)
+	}
+	return mode
+}
+
+func keywordFilterHasObviousSeparator(pattern string) bool {
+	for _, r := range pattern {
+		folded := foldKeywordFilterWidthRune(r)
+		if unicode.IsSpace(folded) || keywordFilterIsHardPunctuation(folded) || keywordFilterIsWeakPunctuation(folded) {
+			return true
+		}
+	}
+	return false
+}
+
+func keywordFilterHasLatinDigitBoundary(input normalizedKeywordText, start int, end int) bool {
+	origStart, origEnd := input.originalBoundsForNormalizedRange(start, end)
+	if origStart < 0 || origEnd <= origStart {
+		return false
+	}
+	leftOK := true
+	rightOK := true
+	if r, ok := keywordFilterPreviousRune(input.Original, origStart); ok {
+		leftOK = !keywordFilterIsLatinOrDigit(foldKeywordFilterWidthRune(r))
+	}
+	if r, ok := keywordFilterNextRune(input.Original, origEnd); ok {
+		rightOK = !keywordFilterIsLatinOrDigit(foldKeywordFilterWidthRune(r))
+	}
+	return leftOK && rightOK
+}
+
+func keywordFilterPhraseAllowed(pattern string, input normalizedKeywordText, matchRange keywordFilterRange) bool {
+	if keywordFilterContainsHardPunctuation(input.originalForNormalizedRange(matchRange.Start, matchRange.End)) {
+		return false
+	}
+	if keywordFilterPatternHasHan(pattern) && keywordFilterPatternHasLatinOrDigit(pattern) {
+		if !keywordFilterMixedPhraseBoundaryAllowed(pattern, input, matchRange) {
+			return false
+		}
+	} else if keywordFilterPatternHasLatinOrDigit(pattern) && !keywordFilterHasLatinDigitBoundary(input, matchRange.Start, matchRange.End) {
+		return false
+	}
+	if keywordFilterPatternHasHan(pattern) {
+		return keywordFilterCJKPhraseBoundaryAllowed(pattern, input, matchRange)
+	}
+	return true
+}
+
+func keywordFilterMixedPhraseBoundaryAllowed(pattern string, input normalizedKeywordText, matchRange keywordFilterRange) bool {
+	origStart, origEnd := input.originalBoundsForNormalizedRange(matchRange.Start, matchRange.End)
+	if origStart < 0 || origEnd <= origStart {
+		return false
+	}
+	if r, ok := keywordFilterPreviousRune(input.Original, origStart); ok && keywordFilterIsLatinOrDigit(foldKeywordFilterWidthRune(r)) {
+		return false
+	}
+	if r, ok := keywordFilterNextRune(input.Original, origEnd); ok && keywordFilterIsLatinOrDigit(foldKeywordFilterWidthRune(r)) {
+		return false
+	}
+	return true
+}
+
+func keywordFilterCJKTokenAllowed(pattern string, input normalizedKeywordText, matchRange keywordFilterRange) bool {
+	if !keywordFilterPatternHasHan(pattern) {
+		return keywordFilterPhraseAllowed(pattern, input, matchRange)
+	}
+	if keywordFilterPatternHasLatinOrDigit(pattern) {
+		return keywordFilterMixedPhraseBoundaryAllowed(pattern, input, matchRange)
+	}
+	if keywordFilterCJKForbiddenContext(input, matchRange) {
+		return false
+	}
+	return true
+}
+
+func keywordFilterCJKPhraseBoundaryAllowed(pattern string, input normalizedKeywordText, matchRange keywordFilterRange) bool {
+	runeCount := keywordFilterHanRuneCount(pattern)
+	if runeCount <= 2 {
+		return !keywordFilterCJKForbiddenContext(input, matchRange)
+	}
+	if keywordFilterPatternHasLatinOrDigit(pattern) {
+		return true
+	}
+	return true
+}
+
+func keywordFilterCJKForbiddenContext(input normalizedKeywordText, matchRange keywordFilterRange) bool {
+	leftHan := false
+	rightHan := false
+	origStart, origEnd := input.originalBoundsForNormalizedRange(matchRange.Start, matchRange.End)
+	if origStart < 0 || origEnd <= origStart {
+		return true
+	}
+	if r, ok := keywordFilterPreviousRune(input.Original, origStart); ok {
+		leftHan = keywordFilterIsHan(foldKeywordFilterWidthRune(r))
+	}
+	if r, ok := keywordFilterNextRune(input.Original, origEnd); ok {
+		rightHan = keywordFilterIsHan(foldKeywordFilterWidthRune(r))
+	}
+	return leftHan && rightHan
+}
+
+func normalizedKeywordPhrase(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var builder strings.Builder
+	previousWasSpace := false
+	for _, r := range value {
+		folded := foldKeywordFilterWidthRune(r)
+		if folded == 0 {
+			folded = r
+		}
+		if unicode.IsSpace(folded) || keywordFilterIsWeakPunctuation(folded) {
+			if builder.Len() > 0 && !previousWasSpace {
+				builder.WriteByte(' ')
+				previousWasSpace = true
+			}
+			continue
+		}
+		if keywordFilterIsHardPunctuation(folded) {
+			if builder.Len() > 0 && !previousWasSpace {
+				builder.WriteByte(' ')
+				previousWasSpace = true
+			}
+			continue
+		}
+		for _, out := range strings.ToLower(string(folded)) {
+			builder.WriteRune(out)
+		}
+		previousWasSpace = false
+	}
+	return strings.TrimSpace(builder.String())
+}
+
+func keywordFilterContainsHardPunctuation(value string) bool {
+	for _, r := range value {
+		if keywordFilterIsHardPunctuation(foldKeywordFilterWidthRune(r)) {
+			return true
+		}
+	}
+	return false
+}
+
+func keywordFilterSpanIndexBefore(spans []keywordFilterSpan, offset int) int {
+	for i := len(spans) - 1; i >= 0; i-- {
+		if spans[i].End <= offset {
+			return i
+		}
+	}
+	return -1
+}
+
+func keywordFilterSpanIndexAtOrAfter(spans []keywordFilterSpan, offset int) int {
+	for i, span := range spans {
+		if span.Start >= offset {
+			return i
+		}
+	}
+	return -1
+}
+
+func keywordFilterPreviousRune(text string, offset int) (rune, bool) {
+	if offset <= 0 || offset > len(text) {
+		return 0, false
+	}
+	r, _ := utf8.DecodeLastRuneInString(text[:offset])
+	return r, r != utf8.RuneError
+}
+
+func keywordFilterNextRune(text string, offset int) (rune, bool) {
+	if offset < 0 || offset >= len(text) {
+		return 0, false
+	}
+	r, _ := utf8.DecodeRuneInString(text[offset:])
+	return r, r != utf8.RuneError
+}
+
+func keywordFilterNormalizedRuneClass(r rune) keywordFilterRuneClass {
+	switch {
+	case keywordFilterIsHan(r):
+		return keywordFilterRuneClassHan
+	case keywordFilterIsLatinOrDigit(r):
+		return keywordFilterRuneClassLatinDigit
+	default:
+		return keywordFilterRuneClassOther
+	}
+}
+
+func keywordFilterIsHan(r rune) bool {
+	return unicode.Is(unicode.Han, r)
+}
+
+func keywordFilterIsLatinOrDigit(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || unicode.IsDigit(r)
+}
+
+func keywordFilterIsWeakPunctuation(r rune) bool {
+	switch r {
+	case '_', '-', '.', ',', '\'', '"', '`', '~', '*', '+', '=', '|', '/', '\\':
+		return true
+	case '，', '。', '、', '·', '＇', '＂', '“', '”', '‘', '’':
+		return true
+	default:
+		return false
+	}
+}
+
+func keywordFilterIsHardPunctuation(r rune) bool {
+	switch r {
+	case '!', '?', ';', ':', '\n', '\r', '\t':
+		return true
+	case '！', '？', '；', '：':
+		return true
+	default:
+		return false
+	}
+}
+
+func keywordFilterPatternHasHan(pattern string) bool {
+	for _, r := range pattern {
+		if keywordFilterIsHan(foldKeywordFilterWidthRune(r)) {
+			return true
+		}
+	}
+	return false
+}
+
+func keywordFilterPatternHasLatinOrDigit(pattern string) bool {
+	for _, r := range pattern {
+		if keywordFilterIsLatinOrDigit(foldKeywordFilterWidthRune(r)) {
+			return true
+		}
+	}
+	return false
+}
+
+func keywordFilterHanRuneCount(pattern string) int {
+	count := 0
+	for _, r := range pattern {
+		if keywordFilterIsHan(foldKeywordFilterWidthRune(r)) {
+			count++
+		}
+	}
+	return count
+}
+
+func keywordFilterStringInSlice(value string, values []string) bool {
+	for _, item := range values {
+		if strings.EqualFold(value, item) {
+			return true
+		}
+	}
+	return false
+}
+
+func keywordFilterRuleDisplayName(rule KeywordFilterRule, resolvedMode string) string {
+	if rule.ID != "" {
+		return fmt.Sprintf("%s/%s", rule.ID, resolvedMode)
+	}
+	return fmt.Sprintf("%s/%s", rule.Pattern, resolvedMode)
+}
+
 func (s *KeywordFilterService) normalizeText(text string) normalizedKeywordText {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -498,6 +1042,7 @@ func (s *KeywordFilterService) normalizeText(text string) normalizedKeywordText 
 	var regexBuilder strings.Builder
 	var spans []keywordFilterSpan
 	var regexSpans []keywordFilterSpan
+	var classes []keywordFilterRuneClass
 	for idx, r := range text {
 		foldedForRegex := foldKeywordFilterWidthRune(r)
 		if foldedForRegex == 0 {
@@ -527,9 +1072,10 @@ func (s *KeywordFilterService) normalizeText(text string) normalizedKeywordText 
 				OrigStart: idx,
 				OrigEnd:   idx + utf8.RuneLen(r),
 			})
+			classes = append(classes, keywordFilterNormalizedRuneClass(outRune))
 		}
 	}
-	return normalizedKeywordText{Text: builder.String(), RegexText: regexBuilder.String(), Original: text, Spans: spans, RegexSpans: regexSpans}
+	return normalizedKeywordText{Text: builder.String(), RegexText: regexBuilder.String(), Original: text, Spans: spans, RegexSpans: regexSpans, Classes: classes}
 }
 
 func (s *KeywordFilterService) buildLog(input KeywordFilterCheckInput, cfg *KeywordFilterConfig, match *keywordFilterMatch, rawText string, inputHash string) *KeywordFilterLog {
@@ -602,6 +1148,8 @@ func defaultKeywordFilterConfig() *KeywordFilterConfig {
 		GroupIDs:         []int64{},
 		Keywords:         []string{},
 		Whitelist:        []string{},
+		KeywordRules:     []KeywordFilterRule{},
+		WhitelistRules:   []KeywordFilterWhitelistRule{},
 		RegexRules:       defaultKeywordFilterRegexRules(),
 		BlockStatus:      defaultKeywordFilterBlockStatus,
 		BlockMessage:     defaultKeywordFilterBlockMessage,
@@ -623,6 +1171,20 @@ func (cfg *KeywordFilterConfig) normalize() {
 	cfg.GroupIDs = normalizeInt64IDs(cfg.GroupIDs)
 	cfg.Keywords = normalizeKeywordFilterList(cfg.Keywords)
 	cfg.Whitelist = normalizeKeywordFilterList(cfg.Whitelist)
+	cfg.KeywordRules = normalizeKeywordFilterRules(cfg.KeywordRules)
+	cfg.WhitelistRules = normalizeKeywordFilterWhitelistRules(cfg.WhitelistRules)
+	if len(cfg.KeywordRules) == 0 && len(cfg.Keywords) > 0 {
+		cfg.KeywordRules = keywordFilterRulesFromLegacyKeywords(cfg.Keywords)
+	}
+	if len(cfg.WhitelistRules) == 0 && len(cfg.Whitelist) > 0 {
+		cfg.WhitelistRules = keywordFilterWhitelistRulesFromLegacy(cfg.Whitelist)
+	}
+	if len(cfg.Keywords) == 0 && len(cfg.KeywordRules) > 0 {
+		cfg.Keywords = keywordFilterLegacyKeywordsFromRules(cfg.KeywordRules)
+	}
+	if len(cfg.Whitelist) == 0 && len(cfg.WhitelistRules) > 0 {
+		cfg.Whitelist = keywordFilterLegacyWhitelistFromRules(cfg.WhitelistRules)
+	}
 	cfg.RegexRules = mergeKeywordFilterRegexRules(cfg.RegexRules)
 	if cfg.BlockStatus < 400 || cfg.BlockStatus > 599 {
 		cfg.BlockStatus = defaultKeywordFilterBlockStatus
@@ -638,6 +1200,26 @@ func (cfg *KeywordFilterConfig) normalize() {
 	if cfg.HitRetentionDays > maxKeywordFilterRetentionDays {
 		cfg.HitRetentionDays = maxKeywordFilterRetentionDays
 	}
+}
+
+func (cfg *KeywordFilterConfig) effectiveKeywordRules() []KeywordFilterRule {
+	if cfg == nil {
+		return nil
+	}
+	if len(cfg.KeywordRules) > 0 {
+		return cfg.KeywordRules
+	}
+	return keywordFilterRulesFromLegacyKeywords(cfg.Keywords)
+}
+
+func (cfg *KeywordFilterConfig) effectiveWhitelistRules() []KeywordFilterWhitelistRule {
+	if cfg == nil {
+		return nil
+	}
+	if len(cfg.WhitelistRules) > 0 {
+		return cfg.WhitelistRules
+	}
+	return keywordFilterWhitelistRulesFromLegacy(cfg.Whitelist)
 }
 
 func (cfg *KeywordFilterConfig) includesGroup(groupID *int64) bool {
@@ -697,6 +1279,180 @@ func normalizeKeywordFilterRegexRules(rules []KeywordFilterRegexRule) []KeywordF
 	return out
 }
 
+func normalizeKeywordFilterRules(rules []KeywordFilterRule) []KeywordFilterRule {
+	out := make([]KeywordFilterRule, 0, len(rules))
+	seen := map[string]struct{}{}
+	for index, rule := range rules {
+		rule.Pattern = strings.TrimSpace(rule.Pattern)
+		if rule.Pattern == "" {
+			continue
+		}
+		rule.ID = sanitizeKeywordFilterRuleID(rule.ID)
+		if rule.ID == "" {
+			rule.ID = keywordFilterRuleID("keyword", rule.Pattern, index)
+		}
+		rule.MatchMode = normalizeKeywordFilterMatchMode(rule.MatchMode)
+		if rule.Action == "" {
+			rule.Action = KeywordFilterActionBlock
+		}
+		key := strings.ToLower(rule.ID)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, rule)
+	}
+	return out
+}
+
+func normalizeKeywordFilterWhitelistRules(rules []KeywordFilterWhitelistRule) []KeywordFilterWhitelistRule {
+	out := make([]KeywordFilterWhitelistRule, 0, len(rules))
+	seen := map[string]struct{}{}
+	for index, rule := range rules {
+		rule.Pattern = strings.TrimSpace(rule.Pattern)
+		if rule.Pattern == "" {
+			continue
+		}
+		rule.ID = sanitizeKeywordFilterRuleID(rule.ID)
+		if rule.ID == "" {
+			rule.ID = keywordFilterRuleID("whitelist", rule.Pattern, index)
+		}
+		rule.MatchMode = normalizeKeywordFilterMatchMode(rule.MatchMode)
+		rule.TargetRuleIDs = normalizeKeywordFilterStringIDs(rule.TargetRuleIDs)
+		rule.Enabled = rule.Enabled
+		key := strings.ToLower(rule.ID)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, rule)
+	}
+	return out
+}
+
+func keywordFilterRulesFromLegacyKeywords(keywords []string) []KeywordFilterRule {
+	keywords = normalizeKeywordFilterList(keywords)
+	out := make([]KeywordFilterRule, 0, len(keywords))
+	for index, keyword := range keywords {
+		out = append(out, KeywordFilterRule{
+			ID:        keywordFilterRuleID("legacy_keyword", keyword, index),
+			Pattern:   keyword,
+			MatchMode: KeywordFilterMatchModeAuto,
+			Enabled:   true,
+			Action:    KeywordFilterActionBlock,
+		})
+	}
+	return out
+}
+
+func keywordFilterWhitelistRulesFromLegacy(whitelist []string) []KeywordFilterWhitelistRule {
+	whitelist = normalizeKeywordFilterList(whitelist)
+	out := make([]KeywordFilterWhitelistRule, 0, len(whitelist))
+	for index, pattern := range whitelist {
+		out = append(out, KeywordFilterWhitelistRule{
+			ID:        keywordFilterRuleID("legacy_whitelist", pattern, index),
+			Pattern:   pattern,
+			MatchMode: KeywordFilterMatchModeAuto,
+			Enabled:   true,
+		})
+	}
+	return out
+}
+
+func keywordFilterLegacyKeywordsFromRules(rules []KeywordFilterRule) []string {
+	values := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		if strings.TrimSpace(rule.Pattern) != "" {
+			values = append(values, rule.Pattern)
+		}
+	}
+	return normalizeKeywordFilterList(values)
+}
+
+func keywordFilterLegacyWhitelistFromRules(rules []KeywordFilterWhitelistRule) []string {
+	values := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		if strings.TrimSpace(rule.Pattern) != "" {
+			values = append(values, rule.Pattern)
+		}
+	}
+	return normalizeKeywordFilterList(values)
+}
+
+func normalizeKeywordFilterMatchMode(mode string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case KeywordFilterMatchModeContains,
+		KeywordFilterMatchModeFuzzy,
+		KeywordFilterMatchModeToken,
+		KeywordFilterMatchModeExactPhrase,
+		KeywordFilterMatchModeCJKToken:
+		return mode
+	default:
+		return KeywordFilterMatchModeAuto
+	}
+}
+
+func isValidKeywordFilterMatchMode(mode string) bool {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case "",
+		KeywordFilterMatchModeAuto,
+		KeywordFilterMatchModeContains,
+		KeywordFilterMatchModeFuzzy,
+		KeywordFilterMatchModeToken,
+		KeywordFilterMatchModeExactPhrase,
+		KeywordFilterMatchModeCJKToken:
+		return true
+	default:
+		return false
+	}
+}
+
+func sanitizeKeywordFilterRuleID(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var builder strings.Builder
+	for _, r := range value {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			builder.WriteRune(r)
+		case r == '_' || r == '-':
+			builder.WriteRune(r)
+		}
+	}
+	return trimRunes(builder.String(), 80)
+}
+
+func keywordFilterRuleID(prefix string, pattern string, index int) string {
+	normalizedPrefix := sanitizeKeywordFilterRuleID(prefix)
+	if normalizedPrefix == "" {
+		normalizedPrefix = "rule"
+	}
+	sum := sha256.Sum256([]byte(pattern))
+	return fmt.Sprintf("%s_%d_%s", normalizedPrefix, index, hex.EncodeToString(sum[:])[:10])
+}
+
+func normalizeKeywordFilterStringIDs(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = sanitizeKeywordFilterRuleID(value)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
 func applyKeywordFilterConfigPatch(cfg *KeywordFilterConfig, input UpdateKeywordFilterConfigInput) {
 	if cfg == nil {
 		return
@@ -712,9 +1468,19 @@ func applyKeywordFilterConfigPatch(cfg *KeywordFilterConfig, input UpdateKeyword
 	}
 	if input.Keywords != nil {
 		cfg.Keywords = normalizeKeywordFilterList(*input.Keywords)
+		cfg.KeywordRules = keywordFilterRulesFromLegacyKeywords(cfg.Keywords)
 	}
 	if input.Whitelist != nil {
 		cfg.Whitelist = normalizeKeywordFilterList(*input.Whitelist)
+		cfg.WhitelistRules = keywordFilterWhitelistRulesFromLegacy(cfg.Whitelist)
+	}
+	if input.KeywordRules != nil {
+		cfg.KeywordRules = normalizeKeywordFilterRules(*input.KeywordRules)
+		cfg.Keywords = keywordFilterLegacyKeywordsFromRules(cfg.KeywordRules)
+	}
+	if input.WhitelistRules != nil {
+		cfg.WhitelistRules = normalizeKeywordFilterWhitelistRules(*input.WhitelistRules)
+		cfg.Whitelist = keywordFilterLegacyWhitelistFromRules(cfg.WhitelistRules)
 	}
 	if input.RegexRules != nil {
 		cfg.RegexRules = normalizeKeywordFilterRegexRules(*input.RegexRules)
@@ -736,6 +1502,8 @@ func keywordFilterConfigPatchProvided(input UpdateKeywordFilterConfigInput) bool
 		input.GroupIDs != nil ||
 		input.Keywords != nil ||
 		input.Whitelist != nil ||
+		input.KeywordRules != nil ||
+		input.WhitelistRules != nil ||
 		input.RegexRules != nil ||
 		input.BlockStatus != nil ||
 		input.BlockMessage != nil ||
@@ -811,10 +1579,18 @@ var (
 )
 
 type keywordFilterMatch struct {
-	MatchType   string
-	RuleName    string
-	MatchedText string
-	DisplayText string
+	MatchType         string
+	RuleID            string
+	RuleName          string
+	MatchedText       string
+	DisplayText       string
+	MatchMode         string
+	ResolvedMatchMode string
+	SegmentIndex      int
+	MessageIndex      int
+	PartIndex         int
+	SegmentText       string
+	Whitelisted       bool
 }
 
 type normalizedKeywordText struct {
@@ -823,6 +1599,7 @@ type normalizedKeywordText struct {
 	Original   string
 	Spans      []keywordFilterSpan
 	RegexSpans []keywordFilterSpan
+	Classes    []keywordFilterRuneClass
 }
 
 func (n normalizedKeywordText) originalForNormalizedRange(start, end int) string {
@@ -834,8 +1611,20 @@ func (n normalizedKeywordText) originalForRegexRange(start, end int) string {
 }
 
 func (n normalizedKeywordText) originalForRange(start, end int, spans []keywordFilterSpan) string {
-	if start < 0 || end <= start || len(spans) == 0 {
+	origStart, origEnd := n.originalBoundsForRange(start, end, spans)
+	if origStart < 0 || origEnd <= origStart || origEnd > len(n.Original) {
 		return ""
+	}
+	return n.Original[origStart:origEnd]
+}
+
+func (n normalizedKeywordText) originalBoundsForNormalizedRange(start, end int) (int, int) {
+	return n.originalBoundsForRange(start, end, n.Spans)
+}
+
+func (n normalizedKeywordText) originalBoundsForRange(start, end int, spans []keywordFilterSpan) (int, int) {
+	if start < 0 || end <= start || len(spans) == 0 {
+		return -1, -1
 	}
 	origStart := -1
 	origEnd := -1
@@ -854,9 +1643,9 @@ func (n normalizedKeywordText) originalForRange(start, end int, spans []keywordF
 		}
 	}
 	if origStart < 0 || origEnd <= origStart || origEnd > len(n.Original) {
-		return ""
+		return -1, -1
 	}
-	return n.Original[origStart:origEnd]
+	return origStart, origEnd
 }
 
 type keywordFilterSpan struct {
@@ -870,6 +1659,14 @@ type keywordFilterRange struct {
 	Start int
 	End   int
 }
+
+type keywordFilterRuneClass int
+
+const (
+	keywordFilterRuneClassOther keywordFilterRuneClass = iota
+	keywordFilterRuneClassLatinDigit
+	keywordFilterRuneClassHan
+)
 
 func rangeCoveredByAny(start, end int, ranges []keywordFilterRange) bool {
 	for _, item := range ranges {
@@ -885,4 +1682,32 @@ func splitKeywordFilterSegments(text string) []string {
 		return []string{}
 	}
 	return []string{text}
+}
+
+func joinKeywordFilterSegmentTexts(segments []KeywordFilterTextSegment) string {
+	parts := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		if strings.TrimSpace(segment.Text) != "" {
+			parts = append(parts, segment.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func joinKeywordFilterNormalizedTexts(segments []keywordFilterNormalizedSegment) string {
+	parts := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		if strings.TrimSpace(segment.Normalized.Text) != "" {
+			parts = append(parts, segment.Normalized.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func keywordFilterTestSegmentTexts(segments []keywordFilterNormalizedSegment) []string {
+	out := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		out = append(out, segment.Normalized.Text)
+	}
+	return out
 }

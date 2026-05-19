@@ -194,12 +194,33 @@ export interface KeywordFilterRegexRule {
   builtin?: boolean
 }
 
+export type KeywordFilterMatchMode = 'auto' | 'contains' | 'fuzzy' | 'token' | 'exact_phrase' | 'cjk_token'
+
+export interface KeywordFilterRule {
+  id: string
+  pattern: string
+  match_mode: KeywordFilterMatchMode
+  enabled: boolean
+  action?: 'block' | string
+  severity?: string
+}
+
+export interface KeywordFilterWhitelistRule {
+  id: string
+  pattern: string
+  match_mode: KeywordFilterMatchMode
+  target_rule_ids: string[]
+  enabled: boolean
+}
+
 export interface KeywordFilterConfig {
   enabled: boolean
   all_groups: boolean
   group_ids: number[]
   keywords: string[]
   whitelist: string[]
+  keyword_rules: KeywordFilterRule[]
+  whitelist_rules: KeywordFilterWhitelistRule[]
   regex_rules: KeywordFilterRegexRule[]
   block_status: number
   block_message: string
@@ -212,6 +233,8 @@ export interface UpdateKeywordFilterConfig {
   group_ids?: number[]
   keywords?: string[]
   whitelist?: string[]
+  keyword_rules?: KeywordFilterRule[]
+  whitelist_rules?: KeywordFilterWhitelistRule[]
   regex_rules?: KeywordFilterRegexRule[]
   block_status?: number
   block_message?: string
@@ -263,9 +286,17 @@ export interface KeywordFilterLogsResponse {
 
 export interface KeywordFilterTestResponse {
   blocked: boolean
+  whitelisted: boolean
   match_type: string
+  rule_id: string
   rule_name: string
   matched_text: string
+  match_mode: KeywordFilterMatchMode | string
+  resolved_match_mode: KeywordFilterMatchMode | string
+  segment_index: number
+  message_index: number
+  part_index: number
+  segment_text: string
   normalized_text: string
   regex_text: string
   segments: string[]
