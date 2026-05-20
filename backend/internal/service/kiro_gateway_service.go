@@ -94,7 +94,13 @@ func (s *KiroGatewayService) Forward(ctx context.Context, c *gin.Context, accoun
 
 	s.setRequestHeaders(httpReq, accessToken)
 
-	proxyURL := account.GetCredential("proxy_url")
+	proxyURL, err := kiroAccountProxyURLForOperation(account, "gateway_generate")
+	if err != nil {
+		slog.Warn("kiro_gateway.resolve_proxy_failed", "account_id", account.ID, "error", err)
+		return nil, &UpstreamFailoverError{
+			StatusCode: http.StatusBadGateway,
+		}
+	}
 	resp, err := s.httpUpstream.Do(httpReq, proxyURL, account.ID, 1)
 	if err != nil {
 		slog.Warn("kiro_gateway.upstream_request_failed", "account_id", account.ID, "error", err)

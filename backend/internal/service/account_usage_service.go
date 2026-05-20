@@ -686,9 +686,9 @@ func (s *AccountUsageService) fetchKiroUsageInfo(ctx context.Context, account *A
 	}
 	setKiroUsageHeaders(req, accessToken)
 
-	proxyURL := strings.TrimSpace(account.GetCredential("proxy_url"))
-	if proxyURL == "" && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
+	proxyURL, err := kiroAccountProxyURLForOperation(account, "usage_limits")
+	if err != nil {
+		return nil, fmt.Errorf("resolve kiro proxy: %w", err)
 	}
 	client, err := httppool.GetClient(httppool.Options{
 		ProxyURL:              proxyURL,

@@ -37,13 +37,13 @@ type KiroImportRequest struct {
 }
 
 type KiroImportResult struct {
-	Total   int                `json:"total"`
-	Created int                `json:"created"`
-	Updated int                `json:"updated"`
-	Skipped int                `json:"skipped"`
-	Failed  int                `json:"failed"`
-	Items   []KiroImportItem   `json:"items,omitempty"`
-	Errors  []KiroImportError  `json:"errors,omitempty"`
+	Total   int               `json:"total"`
+	Created int               `json:"created"`
+	Updated int               `json:"updated"`
+	Skipped int               `json:"skipped"`
+	Failed  int               `json:"failed"`
+	Items   []KiroImportItem  `json:"items,omitempty"`
+	Errors  []KiroImportError `json:"errors,omitempty"`
 }
 
 type KiroImportItem struct {
@@ -186,12 +186,16 @@ func (h *AccountHandler) importKiroAccounts(ctx context.Context, req KiroImportR
 			credentials["client_id"] = strings.TrimSpace(req.ClientID)
 			credentials["client_secret"] = strings.TrimSpace(req.ClientSecret)
 		}
-		if proxyID := req.ProxyID; proxyID != nil {
-			credentials["proxy_url"] = "" // will be resolved by proxy system
-		}
-
 		if !skipValidation {
-			refreshedCreds, refreshErr := validateKiroToken(ctx, token, authMethod, region, req.ClientID, req.ClientSecret)
+			proxy, proxyErr := h.resolveKiroImportProxy(ctx, req.ProxyID)
+			if proxyErr != nil {
+				result.Failed++
+				msg := fmt.Sprintf("代理解析失败: %s", proxyErr.Error())
+				result.Items = append(result.Items, KiroImportItem{Index: index, Action: "failed", Message: msg})
+				result.Errors = append(result.Errors, KiroImportError{Index: index, Message: msg})
+				continue
+			}
+			refreshedCreds, refreshErr := validateKiroToken(ctx, token, authMethod, region, req.ClientID, req.ClientSecret, proxy)
 			if refreshErr != nil {
 				result.Failed++
 				msg := fmt.Sprintf("token 验证失败: %s", refreshErr.Error())
@@ -311,7 +315,21 @@ func parseKiroImportTokens(req KiroImportRequest) []string {
 	return tokens
 }
 
-func validateKiroToken(ctx context.Context, refreshToken, authMethod, region, clientID, clientSecret string) (map[string]any, error) {
+func (h *AccountHandler) resolveKiroImportProxy(ctx context.Context, proxyID *int64) (*service.Proxy, error) {
+	if proxyID == nil || *proxyID <= 0 {
+		return nil, nil
+	}
+	proxy, err := h.adminService.GetProxy(ctx, *proxyID)
+	if err != nil {
+		return nil, err
+	}
+	if proxy == nil {
+		return nil, fmt.Errorf("proxy %d not found", *proxyID)
+	}
+	return proxy, nil
+}
+
+func validateKiroToken(ctx context.Context, refreshToken, authMethod, region, clientID, clientSecret string, proxy *service.Proxy) (map[string]any, error) {
 	account := &service.Account{
 		Platform: service.PlatformKiro,
 		Type:     service.AccountTypeOAuth,
@@ -322,6 +340,10 @@ func validateKiroToken(ctx context.Context, refreshToken, authMethod, region, cl
 			"client_id":     clientID,
 			"client_secret": clientSecret,
 		},
+		Proxy: proxy,
+	}
+	if proxy != nil {
+		account.ProxyID = &proxy.ID
 	}
 	refresher := service.NewKiroTokenRefresher()
 	return refresher.Refresh(ctx, account)

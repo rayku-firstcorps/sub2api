@@ -62,7 +62,10 @@ func (r *KiroTokenRefresher) Refresh(ctx context.Context, account *Account) (map
 		region = kiro.DefaultRegion
 	}
 
-	proxyURL := account.GetCredential("proxy_url")
+	proxyURL, err := kiroAccountProxyURLForOperation(account, "token_refresh")
+	if err != nil {
+		return nil, fmt.Errorf("resolve kiro proxy: %w", err)
+	}
 
 	client, err := newKiroHTTPClient(proxyURL)
 	if err != nil {

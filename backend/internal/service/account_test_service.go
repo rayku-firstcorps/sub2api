@@ -447,9 +447,9 @@ func (s *AccountTestService) testKiroAccountConnection(c *gin.Context, account *
 	}
 	setKiroRequestHeaders(req, accessToken)
 
-	proxyURL := account.GetCredential("proxy_url")
-	if proxyURL == "" && account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
+	proxyURL, err := kiroAccountProxyURLForOperation(account, "account_test_generate")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to resolve Kiro proxy: %s", err.Error()))
 	}
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
