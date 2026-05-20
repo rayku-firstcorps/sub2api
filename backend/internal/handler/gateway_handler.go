@@ -773,6 +773,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				accountReleaseFunc()
 			}
 			if err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					reqLog.Info("gateway.forward_canceled", zap.Int64("account_id", account.ID), zap.Error(err))
+					return
+				}
 				// Beta policy block: return 400 immediately, no failover
 				var betaBlockedErr *service.BetaBlockedError
 				if errors.As(err, &betaBlockedErr) {

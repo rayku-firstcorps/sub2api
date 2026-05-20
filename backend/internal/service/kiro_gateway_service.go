@@ -107,6 +107,10 @@ func (s *KiroGatewayService) Forward(ctx context.Context, c *gin.Context, accoun
 
 	resp, err := s.httpUpstream.Do(httpReq, proxyURL, account.ID, 1)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			slog.Info("kiro_gateway.upstream_request_canceled", "account_id", account.ID, "error", err)
+			return nil, err
+		}
 		slog.Warn("kiro_gateway.upstream_request_failed", "account_id", account.ID, "error", err)
 		return nil, &UpstreamFailoverError{
 			StatusCode: http.StatusBadGateway,

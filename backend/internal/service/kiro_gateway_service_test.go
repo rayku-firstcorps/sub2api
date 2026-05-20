@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -20,6 +22,16 @@ type fakeKiroPromptCache struct {
 	total     int
 	count     int
 	result    KiroCacheResult
+}
+
+type kiroCancelHTTPUpstream struct{}
+
+func (u *kiroCancelHTTPUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	return nil, context.Canceled
+}
+
+func (u *kiroCancelHTTPUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (f *fakeKiroPromptCache) LookupOrCreate(ctx context.Context, namespace string, breakpoints []KiroCacheBreakpoint, totalInputTokens int) (KiroCacheResult, error) {
@@ -135,6 +147,44 @@ func TestKiroGatewayStreamResponseEmptyUpstreamReturns502BeforeSSE(t *testing.T)
 	require.Equal(t, http.StatusBadGateway, w.Code)
 	require.NotContains(t, w.Body.String(), "event: message_start")
 	require.Contains(t, w.Body.String(), "empty response")
+}
+
+func TestKiroGatewayForwardContextCanceledDoesNotFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body := []byte(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body)))
+	proxyID := int64(6)
+	account := &Account{
+		ID:       12,
+		Platform: PlatformKiro,
+		Type:     AccountTypeOAuth,
+		ProxyID:  &proxyID,
+		Proxy: &Proxy{
+			ID:       proxyID,
+			Protocol: "http",
+			Host:     "proxy.example.com",
+			Port:     8080,
+		},
+		Credentials: map[string]any{
+			"access_token": "token",
+			"expires_at":   time.Now().Add(time.Hour).Format(time.RFC3339),
+		},
+	}
+	fingerprint, fpErr := kiroProxyFingerprint(account)
+	require.NoError(t, fpErr)
+	account.Credentials[kiroProxyFingerprintCredentialKey] = fingerprint
+	svc := NewKiroGatewayService(nil, NewKiroTokenProvider(nil, nil), &kiroCancelHTTPUpstream{}, nil, nil)
+
+	result, err := svc.Forward(context.Background(), c, account, body, false, nil)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Empty(t, w.Body.String())
 }
 
 func TestKiroStreamDiagnosticsCapturesUnusableResponse(t *testing.T) {
