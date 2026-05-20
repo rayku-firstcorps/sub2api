@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"strconv"
 	"strings"
 )
@@ -41,6 +40,7 @@ func kiroAccountProxyURLForOperation(account *Account, operation string) (string
 func kiroAccountProxyResolutionForOperation(account *Account, operation string) (kiroProxyResolution, error) {
 	resolution, err := resolveKiroAccountProxy(account)
 	if err != nil {
+		logKiroProxyResolveFailed(account, operation, err)
 		return kiroProxyResolution{}, err
 	}
 	logKiroProxyResolution(account, operation, resolution)
@@ -49,47 +49,32 @@ func kiroAccountProxyResolutionForOperation(account *Account, operation string) 
 
 func resolveKiroAccountProxy(account *Account) (kiroProxyResolution, error) {
 	if account == nil {
-		return kiroProxyResolution{Source: "none", Fingerprint: kiroProxyFingerprintNone}, nil
+		return kiroProxyResolution{}, fmt.Errorf("kiro account is nil")
 	}
-	if account.ProxyID != nil {
-		if account.Proxy == nil {
-			return kiroProxyResolution{}, fmt.Errorf("kiro account %d has proxy_id %d but proxy is not loaded", account.ID, *account.ProxyID)
-		}
-		proxyURL := strings.TrimSpace(account.Proxy.URL())
-		return kiroProxyResolution{
-			URL:         proxyURL,
-			Enabled:     proxyURL != "",
-			Source:      "account_proxy",
-			ProxyID:     *account.ProxyID,
-			HasProxyID:  true,
-			Protocol:    account.Proxy.Protocol,
-			Host:        account.Proxy.Host,
-			Port:        account.Proxy.Port,
-			Fingerprint: kiroProxyFingerprintForBoundProxy(*account.ProxyID, proxyURL),
-		}, nil
+	if account.ProxyID == nil {
+		return kiroProxyResolution{}, fmt.Errorf("kiro account %d has no bound proxy", account.ID)
 	}
-	proxyURL := strings.TrimSpace(account.GetCredential("proxy_url"))
-	resolution := kiroProxyResolution{
-		URL:         proxyURL,
-		Enabled:     proxyURL != "",
-		Source:      "none",
-		Fingerprint: kiroProxyFingerprintNone,
+	if account.Proxy == nil {
+		return kiroProxyResolution{}, fmt.Errorf("kiro account %d has proxy_id %d but proxy is not loaded", account.ID, *account.ProxyID)
 	}
+	if strings.TrimSpace(account.Proxy.Protocol) == "" || strings.TrimSpace(account.Proxy.Host) == "" || account.Proxy.Port <= 0 {
+		return kiroProxyResolution{}, fmt.Errorf("kiro account %d has incomplete bound proxy %d", account.ID, *account.ProxyID)
+	}
+	proxyURL := strings.TrimSpace(account.Proxy.URL())
 	if proxyURL == "" {
-		return resolution, nil
+		return kiroProxyResolution{}, fmt.Errorf("kiro account %d bound proxy %d resolved empty url", account.ID, *account.ProxyID)
 	}
-	resolution.Source = "credential_proxy_url"
-	resolution.Fingerprint = kiroProxyFingerprintForLegacyURL(proxyURL)
-	if parsed, err := url.Parse(proxyURL); err == nil && parsed != nil {
-		resolution.Protocol = parsed.Scheme
-		resolution.Host = parsed.Hostname()
-		if portText := parsed.Port(); portText != "" {
-			if port, convErr := strconv.Atoi(portText); convErr == nil {
-				resolution.Port = port
-			}
-		}
-	}
-	return resolution, nil
+	return kiroProxyResolution{
+		URL:         proxyURL,
+		Enabled:     true,
+		Source:      "account_proxy",
+		ProxyID:     *account.ProxyID,
+		HasProxyID:  true,
+		Protocol:    account.Proxy.Protocol,
+		Host:        account.Proxy.Host,
+		Port:        account.Proxy.Port,
+		Fingerprint: kiroProxyFingerprintForBoundProxy(*account.ProxyID, proxyURL),
+	}, nil
 }
 
 const (
@@ -112,20 +97,45 @@ func kiroProxyFingerprintForBoundProxy(proxyID int64, proxyURL string) string {
 	return "account_proxy:" + strconv.FormatInt(proxyID, 10) + ":" + kiroProxyURLHash(proxyURL)
 }
 
-func kiroProxyFingerprintForLegacyURL(proxyURL string) string {
-	return "credential_proxy_url:" + kiroProxyURLHash(proxyURL)
-}
-
 func kiroProxyURLHash(proxyURL string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(proxyURL)))
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-func logKiroProxyResolution(account *Account, operation string, resolution kiroProxyResolution) {
+func normalizeKiroProxyOperation(operation string) string {
 	operation = strings.TrimSpace(operation)
 	if operation == "" {
-		operation = "unknown"
+		return "unknown"
 	}
+	return operation
+}
+
+func logKiroProxyResolveFailed(account *Account, operation string, err error) {
+	operation = normalizeKiroProxyOperation(operation)
+	proxySource := "none"
+	if account != nil && account.ProxyID != nil {
+		proxySource = "account_proxy"
+	}
+	attrs := []any{
+		"component", "service.kiro_proxy",
+		"operation", operation,
+		"proxy_enabled", false,
+		"proxy_source", proxySource,
+	}
+	if account != nil {
+		attrs = append(attrs, "account_id", account.ID)
+		if account.ProxyID != nil {
+			attrs = append(attrs, "proxy_id", *account.ProxyID)
+		}
+	}
+	if err != nil {
+		attrs = append(attrs, "reason", err.Error())
+	}
+	slog.Warn("kiro.proxy_resolve_failed", attrs...)
+}
+
+func logKiroProxyResolution(account *Account, operation string, resolution kiroProxyResolution) {
+	operation = normalizeKiroProxyOperation(operation)
 	attrs := []any{
 		"component", "service.kiro_proxy",
 		"operation", operation,

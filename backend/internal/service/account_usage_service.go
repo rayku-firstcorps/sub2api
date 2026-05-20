@@ -656,6 +656,11 @@ func (s *AccountUsageService) getKiroUsage(ctx context.Context, account *Account
 }
 
 func (s *AccountUsageService) fetchKiroUsageInfo(ctx context.Context, account *Account) (*UsageInfo, error) {
+	proxyURL, err := kiroAccountProxyURLForOperation(account, "usage_limits")
+	if err != nil {
+		return nil, fmt.Errorf("resolve kiro proxy: %w", err)
+	}
+
 	accessToken, err := s.kiroTokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("get kiro access token: %w", err)
@@ -686,10 +691,6 @@ func (s *AccountUsageService) fetchKiroUsageInfo(ctx context.Context, account *A
 	}
 	setKiroUsageHeaders(req, accessToken)
 
-	proxyURL, err := kiroAccountProxyURLForOperation(account, "usage_limits")
-	if err != nil {
-		return nil, fmt.Errorf("resolve kiro proxy: %w", err)
-	}
 	client, err := httppool.GetClient(httppool.Options{
 		ProxyURL:              proxyURL,
 		Timeout:               20 * time.Second,

@@ -410,6 +410,10 @@ func (s *AccountTestService) testKiroAccountConnection(c *gin.Context, account *
 	if s.kiroTokenProvider == nil {
 		return s.sendErrorAndEnd(c, "Kiro token provider not configured")
 	}
+	proxyURL, err := kiroAccountProxyURLForOperation(account, "account_test_generate")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to resolve Kiro proxy: %s", err.Error()))
+	}
 
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -446,11 +450,6 @@ func (s *AccountTestService) testKiroAccountConnection(c *gin.Context, account *
 		return s.sendErrorAndEnd(c, "Failed to create Kiro request")
 	}
 	setKiroRequestHeaders(req, accessToken)
-
-	proxyURL, err := kiroAccountProxyURLForOperation(account, "account_test_generate")
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to resolve Kiro proxy: %s", err.Error()))
-	}
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 

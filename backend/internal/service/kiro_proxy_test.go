@@ -98,7 +98,7 @@ func TestKiroAccountProxyURLErrorsWhenBoundProxyNotLoaded(t *testing.T) {
 	require.Contains(t, err.Error(), "proxy is not loaded")
 }
 
-func TestKiroAccountProxyURLFallsBackToLegacyCredentialProxy(t *testing.T) {
+func TestKiroAccountProxyURLErrorsWithoutBoundProxy(t *testing.T) {
 	t.Parallel()
 
 	account := &Account{
@@ -110,8 +110,9 @@ func TestKiroAccountProxyURLFallsBackToLegacyCredentialProxy(t *testing.T) {
 
 	got, err := kiroAccountProxyURL(account)
 
-	require.NoError(t, err)
-	require.Equal(t, "http://legacy.example.com:8080", got)
+	require.Error(t, err)
+	require.Empty(t, got)
+	require.Contains(t, err.Error(), "has no bound proxy")
 }
 
 func TestKiroAccountProxyURLForOperationLogsSanitizedProxy(t *testing.T) {
@@ -148,6 +149,28 @@ func TestKiroAccountProxyURLForOperationLogsSanitizedProxy(t *testing.T) {
 	require.Contains(t, logOutput, "proxy_host=proxy.example.com")
 	require.NotContains(t, logOutput, "secret")
 	require.NotContains(t, logOutput, "user:secret")
+}
+
+func TestKiroAccountProxyURLForOperationLogsResolveFailure(t *testing.T) {
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	previous := slog.Default()
+	slog.SetDefault(logger)
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	account := &Account{ID: 42}
+
+	got, err := kiroAccountProxyURLForOperation(account, "account_test_generate")
+
+	require.Error(t, err)
+	require.Empty(t, got)
+	logOutput := buf.String()
+	require.Contains(t, logOutput, "kiro.proxy_resolve_failed")
+	require.Contains(t, logOutput, "operation=account_test_generate")
+	require.Contains(t, logOutput, "proxy_enabled=false")
+	require.Contains(t, logOutput, "proxy_source=none")
+	require.Contains(t, logOutput, "account_id=42")
+	require.Contains(t, logOutput, "has no bound proxy")
 }
 
 func TestKiroTokenCacheKeyIncludesProxyFingerprint(t *testing.T) {

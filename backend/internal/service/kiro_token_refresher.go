@@ -205,7 +205,7 @@ func newKiroHTTPClient(proxyURL string) (*http.Client, error) {
 	}
 
 	if proxyURL == "" {
-		return client, nil
+		return nil, fmt.Errorf("kiro proxy url is required")
 	}
 
 	_, parsed, err := proxyurl.Parse(proxyURL)

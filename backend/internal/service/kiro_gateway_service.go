@@ -61,6 +61,14 @@ func (s *KiroGatewayService) Forward(ctx context.Context, c *gin.Context, accoun
 			fmt.Sprintf("Model %s not supported on kiro platform", requestModel))
 	}
 
+	proxyURL, err := kiroAccountProxyURLForOperation(account, "gateway_generate")
+	if err != nil {
+		slog.Warn("kiro_gateway.resolve_proxy_failed", "account_id", account.ID, "error", err)
+		return nil, &UpstreamFailoverError{
+			StatusCode: http.StatusBadGateway,
+		}
+	}
+
 	accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
 		slog.Warn("kiro_gateway.get_access_token_failed", "account_id", account.ID, "error", err)
@@ -94,13 +102,6 @@ func (s *KiroGatewayService) Forward(ctx context.Context, c *gin.Context, accoun
 
 	s.setRequestHeaders(httpReq, accessToken)
 
-	proxyURL, err := kiroAccountProxyURLForOperation(account, "gateway_generate")
-	if err != nil {
-		slog.Warn("kiro_gateway.resolve_proxy_failed", "account_id", account.ID, "error", err)
-		return nil, &UpstreamFailoverError{
-			StatusCode: http.StatusBadGateway,
-		}
-	}
 	resp, err := s.httpUpstream.Do(httpReq, proxyURL, account.ID, 1)
 	if err != nil {
 		slog.Warn("kiro_gateway.upstream_request_failed", "account_id", account.ID, "error", err)
