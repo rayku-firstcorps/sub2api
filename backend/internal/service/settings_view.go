@@ -125,6 +125,7 @@ type SystemSettings struct {
 	DefaultConcurrency           int
 	DefaultBalance               float64
 	RiskControlEnabled           bool
+	KeywordFilterEnabled         bool
 	AffiliateEnabled             bool
 	AffiliateRebateRate          float64
 	AffiliateRebateFreezeHours   int
@@ -263,7 +264,8 @@ type PublicSettings struct {
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
 	// 风控中心功能开关
-	RiskControlEnabled bool `json:"risk_control_enabled"`
+	RiskControlEnabled   bool `json:"risk_control_enabled"`
+	KeywordFilterEnabled bool `json:"keyword_filter_enabled"`
 }
 
 type LoginAgreementDocument struct {

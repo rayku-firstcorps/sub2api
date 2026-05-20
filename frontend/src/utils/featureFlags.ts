@@ -114,6 +114,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Risk Control',
   }),
+  keywordFilter: defineFlag({
+    key: 'keyword_filter_enabled',
+    mode: 'opt-in',
+    label: 'Keyword Filter',
+  }),
   affiliate: defineFlag({
     key: 'affiliate_enabled',
     mode: 'opt-in',

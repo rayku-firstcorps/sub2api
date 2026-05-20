@@ -76,7 +76,6 @@ type KeywordFilterRule struct {
 	MatchMode string `json:"match_mode"`
 	Enabled   bool   `json:"enabled"`
 	Action    string `json:"action"`
-	Severity  string `json:"severity,omitempty"`
 }
 
 type KeywordFilterWhitelistRule struct {
@@ -271,7 +270,7 @@ func (s *KeywordFilterService) Check(ctx context.Context, input KeywordFilterChe
 	if s == nil || s.settingRepo == nil || s.repo == nil {
 		return allow, nil
 	}
-	if !s.isRiskControlEnabled(ctx) {
+	if !s.isKeywordFilterEnabled(ctx) {
 		return allow, nil
 	}
 	cfg, err := s.loadConfig(ctx)
@@ -396,8 +395,8 @@ func (s *KeywordFilterService) loadConfig(ctx context.Context) (*KeywordFilterCo
 	return cfg, nil
 }
 
-func (s *KeywordFilterService) isRiskControlEnabled(ctx context.Context) bool {
-	raw, err := s.settingRepo.GetValue(ctx, SettingKeyRiskControlEnabled)
+func (s *KeywordFilterService) isKeywordFilterEnabled(ctx context.Context) bool {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyKeywordFilterEnabled)
 	if err != nil {
 		return false
 	}

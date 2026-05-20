@@ -484,6 +484,7 @@ export interface SystemSettings {
   // Payment configuration
   payment_enabled: boolean;
   risk_control_enabled: boolean;
+  keyword_filter_enabled: boolean;
   payment_min_amount: number;
   payment_max_amount: number;
   payment_daily_limit: number;
@@ -680,6 +681,7 @@ export interface UpdateSettingsRequest {
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;
+  keyword_filter_enabled?: boolean;
   payment_min_amount?: number;
   payment_max_amount?: number;
   payment_daily_limit?: number;

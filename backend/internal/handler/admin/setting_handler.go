@@ -200,6 +200,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
+		KeywordFilterEnabled:                   settings.KeywordFilterEnabled,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
@@ -571,7 +572,8 @@ type UpdateSettingsRequest struct {
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
 
 	// 风控中心功能开关
-	RiskControlEnabled *bool `json:"risk_control_enabled"`
+	RiskControlEnabled   *bool `json:"risk_control_enabled"`
+	KeywordFilterEnabled *bool `json:"keyword_filter_enabled"`
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -1529,6 +1531,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RiskControlEnabled
 		}(),
+		KeywordFilterEnabled: func() bool {
+			if req.KeywordFilterEnabled != nil {
+				return *req.KeywordFilterEnabled
+			}
+			return previousSettings.KeywordFilterEnabled
+		}(),
 	}
 
 	authSourceDefaults := &service.AuthSourceDefaultSettings{
@@ -1811,7 +1819,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
-		RiskControlEnabled: updatedSettings.RiskControlEnabled,
+		RiskControlEnabled:   updatedSettings.RiskControlEnabled,
+		KeywordFilterEnabled: updatedSettings.KeywordFilterEnabled,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
@@ -2220,6 +2229,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")
+	}
+	if before.KeywordFilterEnabled != after.KeywordFilterEnabled {
+		changed = append(changed, "keyword_filter_enabled")
 	}
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
 	return changed

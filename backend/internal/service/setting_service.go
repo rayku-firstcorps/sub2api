@@ -641,6 +641,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
+		SettingKeyKeywordFilterEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -745,7 +746,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
-		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
+		RiskControlEnabled:   settings[SettingKeyRiskControlEnabled] == "true",
+		KeywordFilterEnabled: settings[SettingKeyKeywordFilterEnabled] == "true",
 	}, nil
 }
 
@@ -950,6 +952,7 @@ type PublicSettingsInjectionPayload struct {
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
+	KeywordFilterEnabled                 bool `json:"keyword_filter_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -1011,6 +1014,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
+		KeywordFilterEnabled:                 settings.KeywordFilterEnabled,
 	}, nil
 }
 
@@ -1631,6 +1635,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// 风控中心功能开关
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
+	updates[SettingKeyKeywordFilterEnabled] = strconv.FormatBool(settings.KeywordFilterEnabled)
 
 	// Claude Code version check
 	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
@@ -2448,7 +2453,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAffiliateEnabled: "false",
 
 		// 风控中心功能（默认关闭，显式启用）
-		SettingKeyRiskControlEnabled: "false",
+		SettingKeyRiskControlEnabled:   "false",
+		SettingKeyKeywordFilterEnabled: "false",
 
 		// Claude Code version check (default: empty = disabled)
 		SettingKeyMinClaudeCodeVersion: "",
@@ -2818,6 +2824,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// 风控中心功能（默认关闭，严格 true 才启用）
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"
+	result.KeywordFilterEnabled = settings[SettingKeyKeywordFilterEnabled] == "true"
 
 	// Claude Code version check
 	result.MinClaudeCodeVersion = settings[SettingKeyMinClaudeCodeVersion]

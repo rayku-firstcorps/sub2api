@@ -216,7 +216,8 @@ type SystemSettings struct {
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	// 风控中心功能开关
-	RiskControlEnabled bool `json:"risk_control_enabled"`
+	RiskControlEnabled   bool `json:"risk_control_enabled"`
+	KeywordFilterEnabled bool `json:"keyword_filter_enabled"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
@@ -285,7 +286,8 @@ type PublicSettings struct {
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
-	RiskControlEnabled bool `json:"risk_control_enabled"`
+	RiskControlEnabled   bool `json:"risk_control_enabled"`
+	KeywordFilterEnabled bool `json:"keyword_filter_enabled"`
 }
 
 type LoginAgreementDocument struct {

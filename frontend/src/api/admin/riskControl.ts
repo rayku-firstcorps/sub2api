@@ -202,7 +202,6 @@ export interface KeywordFilterRule {
   match_mode: KeywordFilterMatchMode
   enabled: boolean
   action?: 'block' | string
-  severity?: string
 }
 
 export interface KeywordFilterWhitelistRule {

@@ -56,6 +56,12 @@ declare module 'vue-router' {
     requiresRiskControl?: boolean
 
     /**
+     * 是否要求关键词过滤功能开关已启用
+     * @default false
+     */
+    requiresKeywordFilter?: boolean
+
+    /**
      * i18n key for the page title
      */
     titleKey?: string

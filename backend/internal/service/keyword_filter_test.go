@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -233,7 +234,7 @@ func TestKeywordFilterService_TestUsesInlineConfig(t *testing.T) {
 
 func TestKeywordFilterService_CheckRespectsSwitches(t *testing.T) {
 	repo := &keywordFilterSettingRepoStub{values: map[string]string{
-		SettingKeyRiskControlEnabled: "false",
+		SettingKeyKeywordFilterEnabled: "false",
 	}}
 	logRepo := &keywordFilterLogRepoStub{}
 	svc := NewKeywordFilterService(repo, logRepo, nil)
@@ -245,7 +246,30 @@ func TestKeywordFilterService_CheckRespectsSwitches(t *testing.T) {
 		t.Fatalf("Check error: %v", err)
 	}
 	if decision == nil || !decision.Allowed || decision.Blocked {
-		t.Fatalf("expected allowed when risk control disabled: %#v", decision)
+		t.Fatalf("expected allowed when keyword filter system switch disabled: %#v", decision)
+	}
+
+	cfg := defaultKeywordFilterConfig()
+	cfg.Enabled = true
+	cfg.Keywords = []string{"bad"}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	repo.values[SettingKeyKeywordFilterEnabled] = "true"
+	repo.values[SettingKeyKeywordFilterConfig] = string(raw)
+	decision, err = svc.Check(context.Background(), KeywordFilterCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"bad"}]}`),
+	})
+	if err != nil {
+		t.Fatalf("Check error: %v", err)
+	}
+	if decision == nil || decision.Allowed || !decision.Blocked {
+		t.Fatalf("expected blocked when system and page switches are enabled: %#v", decision)
+	}
+	if len(logRepo.logs) != 1 {
+		t.Fatalf("expected one keyword filter log, got %d", len(logRepo.logs))
 	}
 }
 
