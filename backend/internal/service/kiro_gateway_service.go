@@ -22,6 +22,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const kiroStreamPreviewLimit = 4096
+
 type KiroGatewayService struct {
 	accountRepo   AccountRepository
 	tokenProvider *KiroTokenProvider
@@ -125,6 +127,7 @@ func (s *KiroGatewayService) Forward(ctx context.Context, c *gin.Context, accoun
 			s.rateLimit.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 		}
 		if resp.StatusCode == http.StatusUnauthorized ||
+			resp.StatusCode == http.StatusPaymentRequired ||
 			resp.StatusCode == http.StatusForbidden ||
 			resp.StatusCode == http.StatusTooManyRequests {
 			return nil, &UpstreamFailoverError{
@@ -135,6 +138,9 @@ func (s *KiroGatewayService) Forward(ctx context.Context, c *gin.Context, accoun
 		}
 		return nil, s.writeError(c, resp.StatusCode, "api_error",
 			fmt.Sprintf("Kiro upstream error (HTTP %d)", resp.StatusCode))
+	}
+	if s.rateLimit != nil {
+		s.rateLimit.UpdateSessionWindow(ctx, account, resp.Header)
 	}
 
 	toolNameMap := buildKiroToolNameMap(parsed)
@@ -207,7 +213,9 @@ func (s *KiroGatewayService) streamResponse(c *gin.Context, body io.Reader, tool
 	stopReason := "end_turn"
 	var outputText strings.Builder
 	var toolInputText strings.Builder
-	toolDiag := newKiroToolDiagnostics(ginRequestContext(c), accountID, model, true)
+	requestCtx := ginRequestContext(c)
+	toolDiag := newKiroToolDiagnostics(requestCtx, accountID, model, true)
+	streamDiag := newKiroStreamDiagnostics(requestCtx, accountID, model, true)
 
 	startStream := func() error {
 		if started {
@@ -264,12 +272,14 @@ func (s *KiroGatewayService) streamResponse(c *gin.Context, body io.Reader, tool
 		return nil
 	}
 
-	readErr := readKiroEvents(body, parser, func(evt kiro.StreamEvent) error {
+	readErr := readKiroEvents(body, parser, streamDiag, func(evt kiro.StreamEvent) error {
+		streamDiag.recordEvent(evt)
 		if evt.Error != "" || evt.ErrorCode != "" {
 			msg := evt.Error
 			if msg == "" {
 				msg = evt.ErrorMessage
 			}
+			streamDiag.logError("upstream_event_error", errors.New(msg), "started", started)
 			if !started {
 				return s.writeError(c, http.StatusBadGateway, "api_error", "Kiro stream error: "+msg)
 			}
@@ -301,10 +311,12 @@ func (s *KiroGatewayService) streamResponse(c *gin.Context, body io.Reader, tool
 		return writeEvents(converter.Convert(evt))
 	})
 	if readErr != nil && !clientDisconnect {
+		streamDiag.logError("read_error", readErr, "started", started, "saw_payload", sawPayload, "saw_stop", sawStop)
 		return nil, readErr
 	}
 
 	if !clientDisconnect && !sawPayload {
+		streamDiag.logEmpty("empty_stream_response", "started", started, "saw_stop", sawStop)
 		if !started {
 			return nil, s.writeError(c, http.StatusBadGateway, "api_error", "Kiro upstream returned empty response")
 		}
@@ -312,8 +324,10 @@ func (s *KiroGatewayService) streamResponse(c *gin.Context, body io.Reader, tool
 
 	outputTokens := estimateTextTokens(outputText.String() + toolInputText.String())
 	if !clientDisconnect && sawPayload && !sawStop {
+		streamDiag.logWarn("missing_stop_event", "output_tokens", outputTokens)
 		converter.SetOutputTokens(outputTokens)
 		if err := writeEvents(converter.Finish(stopReason)); err != nil && !clientDisconnect {
+			streamDiag.logError("finish_write_error", err, "stop_reason", stopReason)
 			return nil, err
 		}
 	}
@@ -332,13 +346,16 @@ func (s *KiroGatewayService) nonStreamResponse(c *gin.Context, body io.Reader, t
 	collector := newKiroMessageCollector(toolNameMap)
 	accountID := optionalAccountID(accountIDOpt)
 	toolDiag := newKiroToolDiagnostics(ginRequestContext(c), accountID, model, false)
+	streamDiag := newKiroStreamDiagnostics(ginRequestContext(c), accountID, model, false)
 
-	err := readKiroEvents(body, parser, func(evt kiro.StreamEvent) error {
+	err := readKiroEvents(body, parser, streamDiag, func(evt kiro.StreamEvent) error {
+		streamDiag.recordEvent(evt)
 		if evt.Error != "" || evt.ErrorCode != "" {
 			msg := evt.Error
 			if msg == "" {
 				msg = evt.ErrorMessage
 			}
+			streamDiag.logError("upstream_event_error", errors.New(msg))
 			return s.writeError(c, http.StatusBadGateway, "api_error", "Kiro stream error: "+msg)
 		}
 		if evt.Name != "" && evt.ToolUseID != "" {
@@ -354,9 +371,11 @@ func (s *KiroGatewayService) nonStreamResponse(c *gin.Context, body io.Reader, t
 		return nil
 	})
 	if err != nil {
+		streamDiag.logError("read_error", err, "has_payload", collector.hasPayload, "saw_stop", collector.sawStop)
 		return nil, err
 	}
 	if !collector.hasPayload {
+		streamDiag.logEmpty("empty_non_stream_response", "saw_stop", collector.sawStop)
 		return nil, s.writeError(c, http.StatusBadGateway, "api_error", "Kiro upstream returned empty response")
 	}
 
@@ -406,24 +425,174 @@ func kiroUsagePayload(usage ClaudeUsage) gin.H {
 	return payload
 }
 
-func readKiroEvents(r io.Reader, parser *kiro.StreamParser, handle func(kiro.StreamEvent) error) error {
+func readKiroEvents(r io.Reader, parser *kiro.StreamParser, diag *kiroStreamDiagnostics, handle func(kiro.StreamEvent) error) error {
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
-			for _, evt := range parser.Feed(buf[:n]) {
+			if diag != nil {
+				diag.recordRead(buf[:n])
+			}
+			events := parser.Feed(buf[:n])
+			if diag != nil {
+				diag.recordParsed(len(events), parser)
+			}
+			for _, evt := range events {
 				if handleErr := handle(evt); handleErr != nil {
 					return handleErr
 				}
 			}
 		}
 		if err == io.EOF {
+			if diag != nil {
+				diag.recordEOF(parser)
+			}
 			return nil
 		}
 		if err != nil {
+			if diag != nil {
+				diag.recordReadError(err, parser)
+			}
 			return err
 		}
 	}
+}
+
+type kiroStreamDiagnostics struct {
+	ctx        context.Context
+	accountID  int64
+	model      string
+	stream     bool
+	bytesRead  int
+	chunksRead int
+	events     int
+	content    int
+	tools      int
+	inputs     int
+	stops      int
+	errors     int
+	buffered   int
+	invalid    int
+	preview    []byte
+}
+
+func newKiroStreamDiagnostics(ctx context.Context, accountID int64, model string, stream bool) *kiroStreamDiagnostics {
+	return &kiroStreamDiagnostics{
+		ctx:       ctx,
+		accountID: accountID,
+		model:     model,
+		stream:    stream,
+	}
+}
+
+func (d *kiroStreamDiagnostics) recordRead(chunk []byte) {
+	if d == nil {
+		return
+	}
+	d.bytesRead += len(chunk)
+	d.chunksRead++
+	if len(d.preview) >= kiroStreamPreviewLimit {
+		return
+	}
+	remaining := kiroStreamPreviewLimit - len(d.preview)
+	if len(chunk) > remaining {
+		chunk = chunk[:remaining]
+	}
+	d.preview = append(d.preview, chunk...)
+}
+
+func (d *kiroStreamDiagnostics) recordParsed(count int, parser *kiro.StreamParser) {
+	if d == nil {
+		return
+	}
+	d.events += count
+	if parser != nil {
+		d.buffered = parser.BufferedBytes()
+		d.invalid = parser.InvalidJSONSkipped()
+	}
+}
+
+func (d *kiroStreamDiagnostics) recordEvent(evt kiro.StreamEvent) {
+	if d == nil {
+		return
+	}
+	if evt.Content != "" {
+		d.content++
+	}
+	if evt.Name != "" || evt.ToolUseID != "" {
+		d.tools++
+	}
+	if evt.Input != "" {
+		d.inputs++
+	}
+	if evt.Stop != nil && *evt.Stop {
+		d.stops++
+	}
+	if evt.Error != "" || evt.ErrorCode != "" {
+		d.errors++
+	}
+}
+
+func (d *kiroStreamDiagnostics) recordEOF(parser *kiro.StreamParser) {
+	if d == nil || parser == nil {
+		return
+	}
+	d.buffered = parser.BufferedBytes()
+	d.invalid = parser.InvalidJSONSkipped()
+}
+
+func (d *kiroStreamDiagnostics) recordReadError(err error, parser *kiro.StreamParser) {
+	if d == nil {
+		return
+	}
+	d.recordEOF(parser)
+	d.logError("body_read_error", err)
+}
+
+func (d *kiroStreamDiagnostics) logEmpty(reason string, attrs ...any) {
+	if d == nil {
+		return
+	}
+	slog.Warn("kiro_gateway.empty_or_unusable_response", d.attrs(reason, attrs...)...)
+}
+
+func (d *kiroStreamDiagnostics) logWarn(reason string, attrs ...any) {
+	if d == nil {
+		return
+	}
+	slog.Warn("kiro_gateway.stream_warning", d.attrs(reason, attrs...)...)
+}
+
+func (d *kiroStreamDiagnostics) logError(reason string, err error, attrs ...any) {
+	if d == nil {
+		return
+	}
+	all := append([]any{"error", err}, attrs...)
+	slog.Warn("kiro_gateway.stream_error", d.attrs(reason, all...)...)
+}
+
+func (d *kiroStreamDiagnostics) attrs(reason string, extra ...any) []any {
+	attrs := []any{
+		"component", "service.kiro_gateway",
+		"reason", reason,
+		"request_id", requestIDFromContext(d.ctx),
+		"client_request_id", clientRequestIDFromContext(d.ctx),
+		"account_id", d.accountID,
+		"model", d.model,
+		"stream", d.stream,
+		"bytes_read", d.bytesRead,
+		"chunks_read", d.chunksRead,
+		"events", d.events,
+		"content_events", d.content,
+		"tool_events", d.tools,
+		"input_events", d.inputs,
+		"stop_events", d.stops,
+		"error_events", d.errors,
+		"parser_buffered_bytes", d.buffered,
+		"parser_invalid_json_skipped", d.invalid,
+		"raw_preview", redactedJSONPreviewForLog(d.preview, kiroStreamPreviewLimit),
+	}
+	return append(attrs, extra...)
 }
 
 type kiroToolDiagnostics struct {

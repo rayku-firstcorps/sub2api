@@ -137,6 +137,24 @@ func TestKiroGatewayStreamResponseEmptyUpstreamReturns502BeforeSSE(t *testing.T)
 	require.Contains(t, w.Body.String(), "empty response")
 }
 
+func TestKiroStreamDiagnosticsCapturesUnusableResponse(t *testing.T) {
+	parser := kiro.NewStreamParser()
+	diag := newKiroStreamDiagnostics(context.Background(), 42, "claude-opus-4-6", true)
+
+	err := readKiroEvents(strings.NewReader("prefix {not-json} suffix"), parser, diag, func(evt kiro.StreamEvent) error {
+		t.Fatalf("unexpected parsed event: %#v", evt)
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, len("prefix {not-json} suffix"), diag.bytesRead)
+	require.Equal(t, 1, diag.chunksRead)
+	require.Equal(t, 0, diag.events)
+	require.Equal(t, 1, diag.invalid)
+	require.Equal(t, 0, diag.buffered)
+	require.Contains(t, string(diag.preview), "{not-json}")
+}
+
 func TestKiroGatewayNonStreamResponseWritesJSONMessageAndUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

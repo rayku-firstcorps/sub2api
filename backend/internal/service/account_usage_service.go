@@ -736,14 +736,14 @@ func buildKiroUsageInfo(raw *kiroUsageResponse, now time.Time) *UsageInfo {
 		return usage
 	}
 
-	topReset := unixSecondsPtr(raw.NextDateReset)
+	topReset := unixTimestampPtr(raw.NextDateReset)
 	for _, b := range raw.UsageBreakdownList {
 		currentUsage := firstNonZero(b.CurrentUsageWithPrecision, b.CurrentUsage)
 		usageLimit := firstNonZero(b.UsageLimitWithPrecision, b.UsageLimit)
 		currentOverages := firstNonZero(b.CurrentOveragesWithPrecision, b.CurrentOverages)
 		overageCap := firstNonZero(b.OverageCapWithPrecision, b.OverageCap)
 
-		resetAt := unixSecondsPtr(b.NextDateReset)
+		resetAt := unixTimestampPtr(b.NextDateReset)
 		if resetAt == nil {
 			resetAt = topReset
 		}
@@ -760,7 +760,7 @@ func buildKiroUsageInfo(raw *kiroUsageResponse, now time.Time) *UsageInfo {
 			utilization = currentUsage / usageLimit * 100
 		}
 
-		usage.KiroBreakdown = append(usage.KiroBreakdown, KiroUsageBreakdown{
+		item := KiroUsageBreakdown{
 			ResourceType:      b.ResourceType,
 			DisplayName:       b.DisplayName,
 			DisplayNamePlural: b.DisplayNamePlural,
@@ -775,7 +775,17 @@ func buildKiroUsageInfo(raw *kiroUsageResponse, now time.Time) *UsageInfo {
 			OverageCharges:    b.OverageCharges,
 			ResetsAt:          resetAt,
 			RemainingSeconds:  remaining,
-		})
+		}
+		usage.KiroBreakdown = append(usage.KiroBreakdown, item)
+		if strings.EqualFold(item.ResourceType, "AGENTIC_REQUEST") {
+			usage.FiveHour = &UsageProgress{
+				Utilization:      item.Utilization,
+				ResetsAt:         item.ResetsAt,
+				RemainingSeconds: item.RemainingSeconds,
+				UsedRequests:     int64(item.CurrentUsage),
+				LimitRequests:    int64(item.UsageLimit),
+			}
+		}
 	}
 	return usage
 }
@@ -818,11 +828,17 @@ func recalcKiroRemainingSeconds(info *UsageInfo) {
 	}
 }
 
-func unixSecondsPtr(seconds float64) *time.Time {
-	if seconds <= 0 {
+func unixTimestampPtr(value float64) *time.Time {
+	if value <= 0 {
 		return nil
 	}
-	t := time.Unix(int64(seconds), 0).UTC()
+	seconds := int64(value)
+	nanos := int64(0)
+	if value >= 1e12 {
+		seconds = int64(value / 1000)
+		nanos = int64(value) % 1000 * int64(time.Millisecond)
+	}
+	t := time.Unix(seconds, nanos).UTC()
 	return &t
 }
 

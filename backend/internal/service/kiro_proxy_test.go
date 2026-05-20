@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -260,13 +261,23 @@ func TestKiroTokenRefresherNeedsRefreshWhenProxyFingerprintChanged(t *testing.T)
 
 type kiroGatewayProxyRecordingUpstream struct {
 	proxyURL string
+	header   http.Header
+	status   int
 }
 
 func (u *kiroGatewayProxyRecordingUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
 	u.proxyURL = proxyURL
+	status := u.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	header := u.header
+	if header == nil {
+		header = make(http.Header)
+	}
 	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     make(http.Header),
+		StatusCode: status,
+		Header:     header,
 		Body:       io.NopCloser(strings.NewReader(`{"content":"ok"}{"stop":true}`)),
 	}, nil
 }
@@ -315,6 +326,69 @@ func TestKiroGatewayForwardUsesBoundProxy(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "http://proxy.example.com:8080", upstream.proxyURL)
+}
+
+type kiroGatewaySessionWindowRepo struct {
+	AccountRepository
+	calls []swCall
+}
+
+func (r *kiroGatewaySessionWindowRepo) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {
+	r.calls = append(r.calls, swCall{ID: id, Start: start, End: end, Status: status})
+	return nil
+}
+
+func (r *kiroGatewaySessionWindowRepo) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	return nil
+}
+
+func TestKiroGatewayForwardUpdatesSessionWindowFromHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	resetAt := time.Now().Add(4 * time.Hour).Unix()
+	headers := make(http.Header)
+	headers.Set("anthropic-ratelimit-unified-5h-status", "allowed_warning")
+	headers.Set("anthropic-ratelimit-unified-5h-reset", strconv.FormatInt(resetAt, 10))
+
+	repo := &kiroGatewaySessionWindowRepo{}
+	proxyID := int64(7)
+	account := &Account{
+		ID:       43,
+		Platform: PlatformKiro,
+		Type:     AccountTypeOAuth,
+		ProxyID:  &proxyID,
+		Proxy: &Proxy{
+			ID:       proxyID,
+			Protocol: "http",
+			Host:     "proxy.example.com",
+			Port:     8080,
+		},
+		Credentials: map[string]any{
+			"access_token": "token",
+			"expires_at":   time.Now().Add(time.Hour).Format(time.RFC3339),
+		},
+	}
+	fingerprint, err := kiroProxyFingerprint(account)
+	require.NoError(t, err)
+	account.Credentials[kiroProxyFingerprintCredentialKey] = fingerprint
+	svc := &KiroGatewayService{
+		tokenProvider: NewKiroTokenProvider(nil, nil),
+		httpUpstream:  &kiroGatewayProxyRecordingUpstream{header: headers},
+		rateLimit:     NewRateLimitService(repo, nil, &config.Config{}, nil, nil),
+	}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	body := []byte(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hello"}]}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body, false, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, repo.calls, 1)
+	require.Equal(t, "allowed_warning", repo.calls[0].Status)
+	require.NotNil(t, repo.calls[0].End)
+	require.Equal(t, time.Unix(resetAt, 0), *repo.calls[0].End)
 }
 
 func TestKiroTokenRefresherUsesBoundProxy(t *testing.T) {

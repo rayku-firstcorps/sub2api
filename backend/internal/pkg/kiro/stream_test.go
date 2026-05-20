@@ -11,12 +11,15 @@ func TestStreamParserSkipsInvalidAWSFrameHeaderJSONStarts(t *testing.T) {
 
 	events := parser.Feed([]byte("binary {not-json} header {\"content\":\"Hel"))
 	require.Empty(t, events)
+	require.Equal(t, 1, parser.InvalidJSONSkipped())
+	require.Greater(t, parser.BufferedBytes(), 0)
 
 	events = parser.Feed([]byte("lo\"}{\"stop\":true}"))
 	require.Len(t, events, 2)
 	require.Equal(t, "Hello", events[0].Content)
 	require.NotNil(t, events[1].Stop)
 	require.True(t, *events[1].Stop)
+	require.Equal(t, 0, parser.BufferedBytes())
 }
 
 func TestStreamParserAcceptsStructuredToolInput(t *testing.T) {

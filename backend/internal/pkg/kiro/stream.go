@@ -29,11 +29,12 @@ type ParsedEvent struct {
 }
 
 type StreamParser struct {
-	buffer  []byte
-	depth   int
-	inStr   bool
-	escaped bool
-	start   int
+	buffer             []byte
+	depth              int
+	inStr              bool
+	escaped            bool
+	start              int
+	invalidJSONSkipped int
 }
 
 func NewStreamParser() *StreamParser {
@@ -67,6 +68,7 @@ func (p *StreamParser) Feed(data []byte) []StreamEvent {
 
 		// AWS event-stream frames contain binary headers. If a header byte happens
 		// to look like "{", skip it and continue searching for the JSON payload.
+		p.invalidJSONSkipped++
 		p.buffer = p.buffer[start+1:]
 	}
 }
@@ -77,6 +79,21 @@ func (p *StreamParser) Reset() {
 	p.inStr = false
 	p.escaped = false
 	p.start = 0
+	p.invalidJSONSkipped = 0
+}
+
+func (p *StreamParser) BufferedBytes() int {
+	if p == nil {
+		return 0
+	}
+	return len(p.buffer)
+}
+
+func (p *StreamParser) InvalidJSONSkipped() int {
+	if p == nil {
+		return 0
+	}
+	return p.invalidJSONSkipped
 }
 
 func findJSONObjectEnd(data []byte) (int, bool) {
