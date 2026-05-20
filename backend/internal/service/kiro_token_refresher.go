@@ -40,6 +40,13 @@ func (r *KiroTokenRefresher) NeedsRefresh(account *Account, _ time.Duration) boo
 	if !r.CanRefresh(account) {
 		return false
 	}
+	currentFingerprint, err := kiroProxyFingerprint(account)
+	if err != nil {
+		return true
+	}
+	if !kiroTokenProxyFingerprintMatches(account, currentFingerprint) {
+		return true
+	}
 	expiresAt := account.GetCredentialAsTime("expires_at")
 	if expiresAt == nil {
 		return true
@@ -62,12 +69,12 @@ func (r *KiroTokenRefresher) Refresh(ctx context.Context, account *Account) (map
 		region = kiro.DefaultRegion
 	}
 
-	proxyURL, err := kiroAccountProxyURLForOperation(account, "token_refresh")
+	proxyResolution, err := kiroAccountProxyResolutionForOperation(account, "token_refresh")
 	if err != nil {
 		return nil, fmt.Errorf("resolve kiro proxy: %w", err)
 	}
 
-	client, err := newKiroHTTPClient(proxyURL)
+	client, err := newKiroHTTPClient(proxyResolution.URL)
 	if err != nil {
 		return nil, fmt.Errorf("create http client: %w", err)
 	}
@@ -86,6 +93,7 @@ func (r *KiroTokenRefresher) Refresh(ctx context.Context, account *Account) (map
 
 	newCreds["auth_method"] = authMethod
 	newCreds["region"] = region
+	newCreds[kiroProxyFingerprintCredentialKey] = proxyResolution.Fingerprint
 	if profileArn := account.GetCredential("profile_arn"); profileArn != "" {
 		if _, exists := newCreds["profile_arn"]; !exists {
 			newCreds["profile_arn"] = profileArn

@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	kiroTokenRefreshSkew         = 3 * time.Minute
-	kiroTokenCacheSkew           = 5 * time.Minute
-	kiroRequestRefreshTimeout    = 8 * time.Second
+	kiroTokenRefreshSkew      = 3 * time.Minute
+	kiroTokenCacheSkew        = 5 * time.Minute
+	kiroRequestRefreshTimeout = 8 * time.Second
 )
 
 type KiroTokenProvider struct {
@@ -61,10 +61,11 @@ func (p *KiroTokenProvider) GetAccessToken(ctx context.Context, account *Account
 		return "", errors.New("not a kiro oauth account")
 	}
 
-	cacheKey := "kiro:account:" + strings.TrimSpace(account.GetCredential("profile_arn"))
-	if cacheKey == "kiro:account:" {
-		cacheKey = KiroTokenCacheKey(account)
+	proxyFingerprint, err := kiroProxyFingerprint(account)
+	if err != nil {
+		return "", err
 	}
+	cacheKey := kiroTokenCacheKey(account, proxyFingerprint)
 
 	if p.tokenCache != nil {
 		if token, err := p.tokenCache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
@@ -73,26 +74,45 @@ func (p *KiroTokenProvider) GetAccessToken(ctx context.Context, account *Account
 	}
 
 	expiresAt := account.GetCredentialAsTime("expires_at")
-	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= kiroTokenRefreshSkew
+	proxyMismatch := !kiroTokenProxyFingerprintMatches(account, proxyFingerprint)
+	needsRefresh := expiresAt == nil ||
+		time.Until(*expiresAt) <= kiroTokenRefreshSkew ||
+		proxyMismatch
 	if needsRefresh && p.refreshAPI != nil && p.executor != nil {
 		refreshCtx, cancel := context.WithTimeout(ctx, kiroRequestRefreshTimeout)
 		defer cancel()
 		result, err := p.refreshAPI.RefreshIfNeeded(refreshCtx, account, p.executor, kiroTokenRefreshSkew)
 		if err != nil {
 			p.markTempUnschedulable(account, err)
+			if proxyMismatch {
+				return "", err
+			}
 			if p.refreshPolicy.OnRefreshError == ProviderRefreshErrorReturn {
 				return "", err
 			}
 		} else if result.LockHeld {
-			if p.refreshPolicy.OnLockHeld == ProviderLockHeldWaitForCache && p.tokenCache != nil {
+			if p.tokenCache != nil {
+				time.Sleep(200 * time.Millisecond)
 				if token, cacheErr := p.tokenCache.GetAccessToken(ctx, cacheKey); cacheErr == nil && strings.TrimSpace(token) != "" {
 					return token, nil
 				}
 			}
+			if proxyMismatch {
+				return "", errors.New("kiro access_token proxy mismatch and refresh lock is held")
+			}
 		} else {
 			account = result.Account
 			expiresAt = account.GetCredentialAsTime("expires_at")
+			if refreshedFingerprint, fpErr := kiroProxyFingerprint(account); fpErr == nil && refreshedFingerprint != "" {
+				proxyFingerprint = refreshedFingerprint
+				cacheKey = kiroTokenCacheKey(account, proxyFingerprint)
+			}
+			proxyMismatch = !kiroTokenProxyFingerprintMatches(account, proxyFingerprint)
 		}
+	}
+
+	if proxyMismatch {
+		return "", errors.New("kiro access_token was not refreshed through the current account proxy")
 	}
 
 	accessToken := account.GetCredential("access_token")
@@ -157,4 +177,35 @@ func (p *KiroTokenProvider) markTempUnschedulable(account *Account, refreshErr e
 
 func KiroTokenCacheKey(account *Account) string {
 	return "kiro:account:" + strconv.FormatInt(account.ID, 10)
+}
+
+func kiroTokenCacheKey(account *Account, proxyFingerprint string) string {
+	base := "kiro:account:" + strings.TrimSpace(account.GetCredential("profile_arn"))
+	if base == "kiro:account:" {
+		base = KiroTokenCacheKey(account)
+	}
+	proxyFingerprint = strings.TrimSpace(proxyFingerprint)
+	if proxyFingerprint == "" {
+		proxyFingerprint = kiroProxyFingerprintNone
+	}
+	return base + ":proxy:" + proxyFingerprint
+}
+
+func kiroTokenProxyFingerprint(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	return strings.TrimSpace(account.GetCredential(kiroProxyFingerprintCredentialKey))
+}
+
+func kiroTokenProxyFingerprintMatches(account *Account, current string) bool {
+	stored := kiroTokenProxyFingerprint(account)
+	current = strings.TrimSpace(current)
+	if current == "" {
+		current = kiroProxyFingerprintNone
+	}
+	if stored == "" {
+		return current == kiroProxyFingerprintNone
+	}
+	return stored == current
 }

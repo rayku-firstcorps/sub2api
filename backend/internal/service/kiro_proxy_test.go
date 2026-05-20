@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -16,6 +17,41 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type kiroTokenCacheStub struct {
+	tokens map[string]string
+	gets   []string
+	sets   []string
+}
+
+func (s *kiroTokenCacheStub) GetAccessToken(_ context.Context, cacheKey string) (string, error) {
+	s.gets = append(s.gets, cacheKey)
+	if s.tokens == nil {
+		return "", errors.New("not cached")
+	}
+	token := s.tokens[cacheKey]
+	if token == "" {
+		return "", errors.New("not cached")
+	}
+	return token, nil
+}
+
+func (s *kiroTokenCacheStub) SetAccessToken(_ context.Context, cacheKey string, _ string, _ time.Duration) error {
+	s.sets = append(s.sets, cacheKey)
+	return nil
+}
+
+func (s *kiroTokenCacheStub) DeleteAccessToken(_ context.Context, _ string) error {
+	return nil
+}
+
+func (s *kiroTokenCacheStub) AcquireRefreshLock(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (s *kiroTokenCacheStub) ReleaseRefreshLock(_ context.Context, _ string) error {
+	return nil
+}
 
 func TestKiroAccountProxyURLPrefersBoundProxy(t *testing.T) {
 	t.Parallel()
@@ -114,6 +150,91 @@ func TestKiroAccountProxyURLForOperationLogsSanitizedProxy(t *testing.T) {
 	require.NotContains(t, logOutput, "user:secret")
 }
 
+func TestKiroTokenCacheKeyIncludesProxyFingerprint(t *testing.T) {
+	t.Parallel()
+
+	proxyID := int64(7)
+	account := &Account{
+		ID:      42,
+		ProxyID: &proxyID,
+		Proxy: &Proxy{
+			ID:       proxyID,
+			Protocol: "http",
+			Host:     "proxy.example.com",
+			Port:     8080,
+		},
+		Credentials: map[string]any{
+			"profile_arn": "profile-a",
+		},
+	}
+	fingerprint, err := kiroProxyFingerprint(account)
+	require.NoError(t, err)
+
+	require.Equal(t, "kiro:account:profile-a:proxy:"+fingerprint, kiroTokenCacheKey(account, fingerprint))
+}
+
+func TestKiroTokenProviderDoesNotReuseTokenFromDifferentProxy(t *testing.T) {
+	t.Parallel()
+
+	proxyID := int64(7)
+	account := &Account{
+		ID:       42,
+		Platform: PlatformKiro,
+		Type:     AccountTypeOAuth,
+		ProxyID:  &proxyID,
+		Proxy: &Proxy{
+			ID:       proxyID,
+			Protocol: "http",
+			Host:     "proxy.example.com",
+			Port:     8080,
+		},
+		Credentials: map[string]any{
+			"access_token": "old-token",
+			"expires_at":   time.Now().Add(time.Hour).Format(time.RFC3339),
+		},
+	}
+	cache := &kiroTokenCacheStub{tokens: map[string]string{
+		KiroTokenCacheKey(account): "cached-old-token",
+	}}
+	fingerprint, err := kiroProxyFingerprint(account)
+	require.NoError(t, err)
+	provider := NewKiroTokenProvider(nil, cache)
+
+	got, err := provider.GetAccessToken(context.Background(), account)
+
+	require.Error(t, err)
+	require.Empty(t, got)
+	require.Contains(t, err.Error(), "current account proxy")
+	require.Equal(t, []string{"kiro:account:42:proxy:" + fingerprint}, cache.gets)
+	require.Empty(t, cache.sets)
+}
+
+func TestKiroTokenRefresherNeedsRefreshWhenProxyFingerprintChanged(t *testing.T) {
+	t.Parallel()
+
+	proxyID := int64(7)
+	account := &Account{
+		ID:       42,
+		Platform: PlatformKiro,
+		Type:     AccountTypeOAuth,
+		ProxyID:  &proxyID,
+		Proxy: &Proxy{
+			ID:       proxyID,
+			Protocol: "http",
+			Host:     "proxy.example.com",
+			Port:     8080,
+		},
+		Credentials: map[string]any{
+			"access_token":                    "old-token",
+			"refresh_token":                   "refresh-token",
+			"expires_at":                      time.Now().Add(time.Hour).Format(time.RFC3339),
+			kiroProxyFingerprintCredentialKey: "account_proxy:6:oldproxy",
+		},
+	}
+
+	require.True(t, NewKiroTokenRefresher().NeedsRefresh(account, time.Hour))
+}
+
 type kiroGatewayProxyRecordingUpstream struct {
 	proxyURL string
 }
@@ -153,6 +274,9 @@ func TestKiroGatewayForwardUsesBoundProxy(t *testing.T) {
 			"proxy_url":    "http://legacy.example.com:8080",
 		},
 	}
+	fingerprint, err := kiroProxyFingerprint(account)
+	require.NoError(t, err)
+	account.Credentials[kiroProxyFingerprintCredentialKey] = fingerprint
 	upstream := &kiroGatewayProxyRecordingUpstream{}
 	svc := &KiroGatewayService{
 		tokenProvider: NewKiroTokenProvider(nil, nil),
