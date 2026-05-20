@@ -326,7 +326,11 @@ func (s *KiroGatewayService) streamResponse(c *gin.Context, body io.Reader, tool
 	outputTokens := estimateTextTokens(outputText.String() + toolInputText.String())
 	if !clientDisconnect && sawPayload && !sawStop {
 		missingStopErr := fmt.Errorf("Kiro upstream stream ended without stop event")
-		streamDiag.logError("missing_stop_event", missingStopErr, "output_tokens", outputTokens, "started", started)
+		if streamDiag.hasParseIssue() {
+			streamDiag.logError("missing_stop_event", missingStopErr, "output_tokens", outputTokens, "started", started)
+		} else {
+			streamDiag.logWarn("missing_stop_event", "output_tokens", outputTokens, "started", started, "completed_by_eof", true)
+		}
 		if !started {
 			return nil, s.writeError(c, http.StatusBadGateway, "api_error", missingStopErr.Error())
 		}
@@ -385,8 +389,11 @@ func (s *KiroGatewayService) nonStreamResponse(c *gin.Context, body io.Reader, t
 	}
 	if !collector.sawStop {
 		missingStopErr := fmt.Errorf("Kiro upstream stream ended without stop event")
-		streamDiag.logError("missing_stop_event", missingStopErr, "has_payload", collector.hasPayload)
-		return nil, s.writeError(c, http.StatusBadGateway, "api_error", missingStopErr.Error())
+		if streamDiag.hasParseIssue() {
+			streamDiag.logError("missing_stop_event", missingStopErr, "has_payload", collector.hasPayload)
+			return nil, s.writeError(c, http.StatusBadGateway, "api_error", missingStopErr.Error())
+		}
+		streamDiag.logWarn("missing_stop_event", "has_payload", collector.hasPayload, "completed_by_eof", true)
 	}
 
 	outputTokens := estimateTextTokens(collector.outputText.String() + collector.toolInputText.String())
@@ -484,9 +491,12 @@ type kiroStreamDiagnostics struct {
 	buffered   int
 	invalid    int
 	preview    []byte
+	tail       []byte
 
 	eventStreamFrames      int
 	eventStreamFrameErrors int
+	eventStreamSkipped     int
+	eventStreamPayloadErrs int
 }
 
 func newKiroStreamDiagnostics(ctx context.Context, accountID int64, model string, stream bool) *kiroStreamDiagnostics {
@@ -504,6 +514,10 @@ func (d *kiroStreamDiagnostics) recordRead(chunk []byte) {
 	}
 	d.bytesRead += len(chunk)
 	d.chunksRead++
+	d.tail = append(d.tail, chunk...)
+	if len(d.tail) > kiroStreamPreviewLimit {
+		d.tail = d.tail[len(d.tail)-kiroStreamPreviewLimit:]
+	}
 	if len(d.preview) >= kiroStreamPreviewLimit {
 		return
 	}
@@ -524,6 +538,8 @@ func (d *kiroStreamDiagnostics) recordParsed(count int, parser *kiro.StreamParse
 		d.invalid = parser.InvalidJSONSkipped()
 		d.eventStreamFrames = parser.EventStreamFrames()
 		d.eventStreamFrameErrors = parser.EventStreamFrameErrors()
+		d.eventStreamSkipped = parser.EventStreamSkippedFrames()
+		d.eventStreamPayloadErrs = parser.EventStreamPayloadErrors()
 	}
 }
 
@@ -556,6 +572,8 @@ func (d *kiroStreamDiagnostics) recordEOF(parser *kiro.StreamParser) {
 	d.invalid = parser.InvalidJSONSkipped()
 	d.eventStreamFrames = parser.EventStreamFrames()
 	d.eventStreamFrameErrors = parser.EventStreamFrameErrors()
+	d.eventStreamSkipped = parser.EventStreamSkippedFrames()
+	d.eventStreamPayloadErrs = parser.EventStreamPayloadErrors()
 }
 
 func (d *kiroStreamDiagnostics) recordReadError(err error, parser *kiro.StreamParser) {
@@ -609,9 +627,19 @@ func (d *kiroStreamDiagnostics) attrs(reason string, extra ...any) []any {
 		"parser_invalid_json_skipped", d.invalid,
 		"event_stream_frames", d.eventStreamFrames,
 		"event_stream_frame_errors", d.eventStreamFrameErrors,
+		"event_stream_skipped_frames", d.eventStreamSkipped,
+		"event_stream_payload_errors", d.eventStreamPayloadErrs,
 		"raw_preview", safeBinaryPreviewForLog(d.preview, kiroStreamPreviewLimit),
+		"raw_tail_preview", safeBinaryPreviewForLog(d.tail, kiroStreamPreviewLimit),
 	}
 	return append(attrs, extra...)
+}
+
+func (d *kiroStreamDiagnostics) hasParseIssue() bool {
+	if d == nil {
+		return false
+	}
+	return d.buffered > 0 || d.eventStreamFrameErrors > 0 || d.eventStreamPayloadErrs > 0
 }
 
 type kiroToolDiagnostics struct {

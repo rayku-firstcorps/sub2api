@@ -50,6 +50,23 @@ func TestStreamParserParsesAWSEventStreamFramesAcrossFeeds(t *testing.T) {
 	require.Equal(t, 0, parser.BufferedBytes())
 }
 
+func TestStreamParserSkipsNonAssistantEventStreamFrames(t *testing.T) {
+	parser := NewStreamParser()
+	stream := append(
+		kiroEventStreamFrameWithEventType("initial-response", []byte(`not-json`)),
+		kiroEventStreamFrame([]byte(`{"content":"Hello"}`))...,
+	)
+
+	events := parser.Feed(stream)
+
+	require.Len(t, events, 1)
+	require.Equal(t, "Hello", events[0].Content)
+	require.Equal(t, 2, parser.EventStreamFrames())
+	require.Equal(t, 1, parser.EventStreamSkippedFrames())
+	require.Equal(t, 0, parser.EventStreamPayloadErrors())
+	require.Equal(t, 0, parser.InvalidJSONSkipped())
+}
+
 func TestStreamParserAcceptsStructuredToolInput(t *testing.T) {
 	parser := NewStreamParser()
 
@@ -166,7 +183,11 @@ func TestStreamConverterConvertsThinkingTextToThinkingBlock(t *testing.T) {
 }
 
 func kiroEventStreamFrame(payload []byte) []byte {
-	headers := appendKiroEventStreamHeader(nil, ":event-type", "assistantResponseEvent")
+	return kiroEventStreamFrameWithEventType("assistantResponseEvent", payload)
+}
+
+func kiroEventStreamFrameWithEventType(eventType string, payload []byte) []byte {
+	headers := appendKiroEventStreamHeader(nil, ":event-type", eventType)
 	headers = appendKiroEventStreamHeader(headers, ":content-type", "application/json")
 	headers = appendKiroEventStreamHeader(headers, ":message-type", "event")
 

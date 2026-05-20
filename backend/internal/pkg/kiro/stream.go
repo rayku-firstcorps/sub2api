@@ -39,6 +39,8 @@ type StreamParser struct {
 	invalidJSONSkipped     int
 	eventStreamFrames      int
 	eventStreamFrameErrors int
+	eventStreamSkipped     int
+	eventStreamPayloadErrs int
 }
 
 func NewStreamParser() *StreamParser {
@@ -50,9 +52,15 @@ func (p *StreamParser) Feed(data []byte) []StreamEvent {
 	p.buffer = append(p.buffer, data...)
 
 	for {
-		if status, payload, frameLen := parseEventStreamFramePayload(p.buffer); status == eventStreamFrameComplete {
+		if status, msg, frameLen := parseEventStreamFrame(p.buffer); status == eventStreamFrameComplete {
 			p.eventStreamFrames++
-			p.appendPayloadEvent(payload, &events)
+			if msg.shouldParsePayload() {
+				if !appendPayloadEvent(msg.payload, &events) {
+					p.eventStreamPayloadErrs++
+				}
+			} else {
+				p.eventStreamSkipped++
+			}
 			p.buffer = p.buffer[frameLen:]
 			continue
 		} else if status == eventStreamFrameIncomplete {
@@ -74,21 +82,21 @@ func (p *StreamParser) Feed(data []byte) []StreamEvent {
 		}
 
 		obj := p.buffer[start : start+end+1]
-		if p.appendPayloadEvent(obj, &events) {
+		if appendPayloadEvent(obj, &events) {
 			p.buffer = p.buffer[start+end+1:]
 			continue
 		}
 
 		// AWS event-stream frames contain binary headers. If a header byte happens
 		// to look like "{", skip it and continue searching for the JSON payload.
+		p.invalidJSONSkipped++
 		p.buffer = p.buffer[start+1:]
 	}
 }
 
-func (p *StreamParser) appendPayloadEvent(payload []byte, events *[]StreamEvent) bool {
+func appendPayloadEvent(payload []byte, events *[]StreamEvent) bool {
 	var evt StreamEvent
 	if err := json.Unmarshal(payload, &evt); err != nil {
-		p.invalidJSONSkipped++
 		return false
 	}
 	*events = append(*events, evt)
@@ -104,6 +112,8 @@ func (p *StreamParser) Reset() {
 	p.invalidJSONSkipped = 0
 	p.eventStreamFrames = 0
 	p.eventStreamFrameErrors = 0
+	p.eventStreamSkipped = 0
+	p.eventStreamPayloadErrs = 0
 }
 
 func (p *StreamParser) BufferedBytes() int {
@@ -134,6 +144,20 @@ func (p *StreamParser) EventStreamFrameErrors() int {
 	return p.eventStreamFrameErrors
 }
 
+func (p *StreamParser) EventStreamSkippedFrames() int {
+	if p == nil {
+		return 0
+	}
+	return p.eventStreamSkipped
+}
+
+func (p *StreamParser) EventStreamPayloadErrors() int {
+	if p == nil {
+		return 0
+	}
+	return p.eventStreamPayloadErrs
+}
+
 type eventStreamFrameStatus int
 
 const (
@@ -147,42 +171,125 @@ const maxKiroEventStreamFrameBytes = 16 * 1024 * 1024
 
 var eventStreamCRCTable = crc32.MakeTable(crc32.IEEE)
 
-func parseEventStreamFramePayload(data []byte) (eventStreamFrameStatus, []byte, int) {
+type eventStreamMessage struct {
+	eventType     string
+	messageType   string
+	exceptionType string
+	payload       []byte
+}
+
+func (m eventStreamMessage) shouldParsePayload() bool {
+	if len(m.payload) == 0 {
+		return false
+	}
+	if m.messageType == "exception" || m.messageType == "error" || m.exceptionType != "" {
+		return true
+	}
+	if m.eventType == "" {
+		return true
+	}
+	return m.eventType == "assistantResponseEvent"
+}
+
+func parseEventStreamFrame(data []byte) (eventStreamFrameStatus, eventStreamMessage, int) {
 	if len(data) == 0 {
-		return eventStreamFrameNotPresent, nil, 0
+		return eventStreamFrameNotPresent, eventStreamMessage{}, 0
 	}
 	if len(data) < 12 {
 		if looksLikeEventStreamPrefix(data) {
-			return eventStreamFrameIncomplete, nil, 0
+			return eventStreamFrameIncomplete, eventStreamMessage{}, 0
 		}
-		return eventStreamFrameNotPresent, nil, 0
+		return eventStreamFrameNotPresent, eventStreamMessage{}, 0
 	}
 
 	totalLength := int(binary.BigEndian.Uint32(data[0:4]))
 	headersLength := int(binary.BigEndian.Uint32(data[4:8]))
 	if totalLength < 16 || totalLength > maxKiroEventStreamFrameBytes || headersLength < 0 || headersLength > totalLength-16 {
-		return eventStreamFrameNotPresent, nil, 0
+		return eventStreamFrameNotPresent, eventStreamMessage{}, 0
 	}
 
 	preludeCRC := binary.BigEndian.Uint32(data[8:12])
 	if crc32.Checksum(data[0:8], eventStreamCRCTable) != preludeCRC {
-		return eventStreamFrameInvalid, nil, 0
+		return eventStreamFrameInvalid, eventStreamMessage{}, 0
 	}
 	if len(data) < totalLength {
-		return eventStreamFrameIncomplete, nil, 0
+		return eventStreamFrameIncomplete, eventStreamMessage{}, 0
 	}
 
 	messageCRC := binary.BigEndian.Uint32(data[totalLength-4 : totalLength])
 	if crc32.Checksum(data[:totalLength-4], eventStreamCRCTable) != messageCRC {
-		return eventStreamFrameInvalid, nil, 0
+		return eventStreamFrameInvalid, eventStreamMessage{}, 0
 	}
 
 	payloadStart := 12 + headersLength
 	payloadEnd := totalLength - 4
 	if payloadStart > payloadEnd {
-		return eventStreamFrameInvalid, nil, 0
+		return eventStreamFrameInvalid, eventStreamMessage{}, 0
 	}
-	return eventStreamFrameComplete, data[payloadStart:payloadEnd], totalLength
+	headers := data[12:payloadStart]
+	msg := eventStreamMessage{
+		eventType:     extractEventStreamStringHeader(headers, ":event-type"),
+		messageType:   extractEventStreamStringHeader(headers, ":message-type"),
+		exceptionType: extractEventStreamStringHeader(headers, ":exception-type"),
+		payload:       data[payloadStart:payloadEnd],
+	}
+	return eventStreamFrameComplete, msg, totalLength
+}
+
+func extractEventStreamStringHeader(headers []byte, targetName string) string {
+	pos := 0
+	for pos < len(headers) {
+		nameLen := int(headers[pos])
+		pos++
+		if pos+nameLen > len(headers) {
+			return ""
+		}
+		name := string(headers[pos : pos+nameLen])
+		pos += nameLen
+		if pos >= len(headers) {
+			return ""
+		}
+		valueType := headers[pos]
+		pos++
+		switch valueType {
+		case 0, 1:
+			if name == targetName {
+				return fmt.Sprintf("%t", valueType == 0)
+			}
+		case 2:
+			pos++
+		case 3:
+			pos += 2
+		case 4:
+			pos += 4
+		case 5:
+			pos += 8
+		case 6, 7:
+			if pos+2 > len(headers) {
+				return ""
+			}
+			valueLen := int(binary.BigEndian.Uint16(headers[pos : pos+2]))
+			pos += 2
+			if pos+valueLen > len(headers) {
+				return ""
+			}
+			value := string(headers[pos : pos+valueLen])
+			pos += valueLen
+			if name == targetName {
+				return value
+			}
+		case 8:
+			pos += 8
+		case 9:
+			pos += 16
+		default:
+			return ""
+		}
+		if pos > len(headers) {
+			return ""
+		}
+	}
+	return ""
 }
 
 func looksLikeEventStreamPrefix(data []byte) bool {

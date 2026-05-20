@@ -214,7 +214,7 @@ func TestKiroGatewayNonStreamResponseWritesJSONMessageAndUsage(t *testing.T) {
 	require.Equal(t, 3, payload.Usage.OutputTokens)
 }
 
-func TestKiroGatewayNonStreamResponseMissingStopReturns502(t *testing.T) {
+func TestKiroGatewayNonStreamResponseMissingStopCompletesByEOF(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -222,10 +222,11 @@ func TestKiroGatewayNonStreamResponseMissingStopReturns502(t *testing.T) {
 
 	result, err := svc.nonStreamResponse(c, strings.NewReader(`{"content":"Hello"}`), nil, "claude-opus-4-6", ClaudeUsage{InputTokens: 9})
 
-	require.Error(t, err)
-	require.Nil(t, result)
-	require.Equal(t, http.StatusBadGateway, w.Code)
-	require.Contains(t, w.Body.String(), "without stop event")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "end_turn", gjson.GetBytes(w.Body.Bytes(), "stop_reason").String())
+	require.Equal(t, "Hello", gjson.GetBytes(w.Body.Bytes(), "content.0.text").String())
 }
 
 func TestKiroMessageCollectorMergesRepeatedToolUseEventsWithSameID(t *testing.T) {
