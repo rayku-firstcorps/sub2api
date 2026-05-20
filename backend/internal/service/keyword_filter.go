@@ -210,7 +210,7 @@ type KeywordFilterService struct {
 
 func NewKeywordFilterService(settingRepo SettingRepository, repo KeywordFilterRepository, groupRepo GroupRepository) *KeywordFilterService {
 	var converter *opencc.OpenCC
-	if c, err := opencc.New("s2t"); err == nil {
+	if c, err := opencc.New("t2s"); err == nil {
 		converter = c
 	} else {
 		slog.Warn("keyword_filter.opencc_init_failed", "error", err)

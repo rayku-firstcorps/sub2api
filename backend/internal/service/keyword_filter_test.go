@@ -37,6 +37,29 @@ func TestKeywordFilterService_MatchesChineseAndASCIIKeywords(t *testing.T) {
 	}
 }
 
+func TestKeywordFilterService_NormalizesChineseToSimplified(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+
+	simplifiedCfg := defaultKeywordFilterConfig()
+	simplifiedCfg.Keywords = []string{"\u8fdd\u89c4\u8bcd"}
+	if match := svc.match(simplifiedCfg, svc.normalizeText("\u9019\u88e1\u6709\u9055\u898f\u8a5e")); match == nil {
+		t.Fatalf("expected simplified keyword to match traditional input")
+	}
+
+	traditionalCfg := defaultKeywordFilterConfig()
+	traditionalCfg.Keywords = []string{"\u9055\u898f\u8a5e"}
+	if match := svc.match(traditionalCfg, svc.normalizeText("\u8fd9\u91cc\u6709\u8fdd\u89c4\u8bcd")); match == nil {
+		t.Fatalf("expected traditional keyword to match simplified input")
+	}
+
+	whitelistCfg := defaultKeywordFilterConfig()
+	whitelistCfg.Keywords = []string{"\u8fdd\u89c4\u8bcd"}
+	whitelistCfg.Whitelist = []string{"\u514d\u6b7b\u9055\u898f\u8a5e"}
+	if match := svc.match(whitelistCfg, svc.normalizeText("\u514d\u6b7b\u8fdd\u89c4\u8bcd")); match != nil {
+		t.Fatalf("expected mixed simplified/traditional whitelist to cover keyword, got %#v", match)
+	}
+}
+
 func TestKeywordFilterService_WhitelistCoversKeyword(t *testing.T) {
 	svc := NewKeywordFilterService(nil, nil, nil)
 	cfg := defaultKeywordFilterConfig()

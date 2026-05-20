@@ -632,6 +632,7 @@ function applyKeywordConfig(config: KeywordFilterConfig) {
   keywordForm.block_message = config.block_message || defaultKeywordFilterBlockMessage
   keywordForm.hit_retention_days = config.hit_retention_days || 180
   cleanupKeywordWhitelistTargets()
+  clampRuleTablePages()
 }
 
 async function loadAll(silent = true) {
@@ -800,10 +801,12 @@ function addWhitelistRule() {
 function removeKeywordRule(ruleID: string) {
   keywordForm.keyword_rules = keywordForm.keyword_rules.filter((rule) => rule.id !== ruleID)
   cleanupKeywordWhitelistTargets()
+  clampRuleTablePage(keywordTable, filteredKeywordRules.value.length)
 }
 
 function removeWhitelistRule(ruleID: string) {
   keywordForm.whitelist_rules = keywordForm.whitelist_rules.filter((rule) => rule.id !== ruleID)
+  clampRuleTablePage(whitelistTable, filteredWhitelistRules.value.length)
 }
 
 function toggleKeywordGroup(groupID: number) {
@@ -827,6 +830,20 @@ function updateRuleFilter<T extends keyof RuleTableState>(state: RuleTableState,
 function updateRulePageSize(state: RuleTableState, value: number) {
   state.page = 1
   state.pageSize = value
+}
+
+function clampRuleTablePage(state: RuleTableState, total: number) {
+  const maxPage = Math.max(1, Math.ceil(total / state.pageSize))
+  if (state.page > maxPage) {
+    state.page = maxPage
+  } else if (state.page < 1) {
+    state.page = 1
+  }
+}
+
+function clampRuleTablePages() {
+  clampRuleTablePage(keywordTable, filteredKeywordRules.value.length)
+  clampRuleTablePage(whitelistTable, filteredWhitelistRules.value.length)
 }
 
 function filterRules<T extends KeywordFilterRule | KeywordFilterWhitelistRule>(rules: T[], state: RuleTableState): T[] {
@@ -1052,6 +1069,7 @@ function mergeImportedRules(items: ImportedRule[], errors: string[]): ImportSumm
     }
   }
   cleanupKeywordWhitelistTargets()
+  clampRuleTablePages()
   return {
     message: t('admin.keywordFilter.importSummary', { keyword: addedKeyword, whitelist: addedWhitelist, skipped }),
     errors,
