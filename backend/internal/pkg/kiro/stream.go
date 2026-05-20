@@ -2,8 +2,10 @@ package kiro
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"strings"
 )
 
@@ -29,12 +31,14 @@ type ParsedEvent struct {
 }
 
 type StreamParser struct {
-	buffer             []byte
-	depth              int
-	inStr              bool
-	escaped            bool
-	start              int
-	invalidJSONSkipped int
+	buffer                 []byte
+	depth                  int
+	inStr                  bool
+	escaped                bool
+	start                  int
+	invalidJSONSkipped     int
+	eventStreamFrames      int
+	eventStreamFrameErrors int
 }
 
 func NewStreamParser() *StreamParser {
@@ -46,6 +50,17 @@ func (p *StreamParser) Feed(data []byte) []StreamEvent {
 	p.buffer = append(p.buffer, data...)
 
 	for {
+		if status, payload, frameLen := parseEventStreamFramePayload(p.buffer); status == eventStreamFrameComplete {
+			p.eventStreamFrames++
+			p.appendPayloadEvent(payload, &events)
+			p.buffer = p.buffer[frameLen:]
+			continue
+		} else if status == eventStreamFrameIncomplete {
+			return events
+		} else if status == eventStreamFrameInvalid {
+			p.eventStreamFrameErrors++
+		}
+
 		start := bytes.IndexByte(p.buffer, '{')
 		if start < 0 {
 			p.buffer = nil
@@ -59,18 +74,25 @@ func (p *StreamParser) Feed(data []byte) []StreamEvent {
 		}
 
 		obj := p.buffer[start : start+end+1]
-		var evt StreamEvent
-		if err := json.Unmarshal(obj, &evt); err == nil {
-			events = append(events, evt)
+		if p.appendPayloadEvent(obj, &events) {
 			p.buffer = p.buffer[start+end+1:]
 			continue
 		}
 
 		// AWS event-stream frames contain binary headers. If a header byte happens
 		// to look like "{", skip it and continue searching for the JSON payload.
-		p.invalidJSONSkipped++
 		p.buffer = p.buffer[start+1:]
 	}
+}
+
+func (p *StreamParser) appendPayloadEvent(payload []byte, events *[]StreamEvent) bool {
+	var evt StreamEvent
+	if err := json.Unmarshal(payload, &evt); err != nil {
+		p.invalidJSONSkipped++
+		return false
+	}
+	*events = append(*events, evt)
+	return true
 }
 
 func (p *StreamParser) Reset() {
@@ -80,6 +102,8 @@ func (p *StreamParser) Reset() {
 	p.escaped = false
 	p.start = 0
 	p.invalidJSONSkipped = 0
+	p.eventStreamFrames = 0
+	p.eventStreamFrameErrors = 0
 }
 
 func (p *StreamParser) BufferedBytes() int {
@@ -94,6 +118,85 @@ func (p *StreamParser) InvalidJSONSkipped() int {
 		return 0
 	}
 	return p.invalidJSONSkipped
+}
+
+func (p *StreamParser) EventStreamFrames() int {
+	if p == nil {
+		return 0
+	}
+	return p.eventStreamFrames
+}
+
+func (p *StreamParser) EventStreamFrameErrors() int {
+	if p == nil {
+		return 0
+	}
+	return p.eventStreamFrameErrors
+}
+
+type eventStreamFrameStatus int
+
+const (
+	eventStreamFrameNotPresent eventStreamFrameStatus = iota
+	eventStreamFrameComplete
+	eventStreamFrameIncomplete
+	eventStreamFrameInvalid
+)
+
+const maxKiroEventStreamFrameBytes = 16 * 1024 * 1024
+
+var eventStreamCRCTable = crc32.MakeTable(crc32.IEEE)
+
+func parseEventStreamFramePayload(data []byte) (eventStreamFrameStatus, []byte, int) {
+	if len(data) == 0 {
+		return eventStreamFrameNotPresent, nil, 0
+	}
+	if len(data) < 12 {
+		if looksLikeEventStreamPrefix(data) {
+			return eventStreamFrameIncomplete, nil, 0
+		}
+		return eventStreamFrameNotPresent, nil, 0
+	}
+
+	totalLength := int(binary.BigEndian.Uint32(data[0:4]))
+	headersLength := int(binary.BigEndian.Uint32(data[4:8]))
+	if totalLength < 16 || totalLength > maxKiroEventStreamFrameBytes || headersLength < 0 || headersLength > totalLength-16 {
+		return eventStreamFrameNotPresent, nil, 0
+	}
+
+	preludeCRC := binary.BigEndian.Uint32(data[8:12])
+	if crc32.Checksum(data[0:8], eventStreamCRCTable) != preludeCRC {
+		return eventStreamFrameInvalid, nil, 0
+	}
+	if len(data) < totalLength {
+		return eventStreamFrameIncomplete, nil, 0
+	}
+
+	messageCRC := binary.BigEndian.Uint32(data[totalLength-4 : totalLength])
+	if crc32.Checksum(data[:totalLength-4], eventStreamCRCTable) != messageCRC {
+		return eventStreamFrameInvalid, nil, 0
+	}
+
+	payloadStart := 12 + headersLength
+	payloadEnd := totalLength - 4
+	if payloadStart > payloadEnd {
+		return eventStreamFrameInvalid, nil, 0
+	}
+	return eventStreamFrameComplete, data[payloadStart:payloadEnd], totalLength
+}
+
+func looksLikeEventStreamPrefix(data []byte) bool {
+	if len(data) == 0 || data[0] != 0 {
+		return false
+	}
+	if len(data) >= 2 && data[1] != 0 {
+		return false
+	}
+	if len(data) >= 4 {
+		totalLength := int(binary.BigEndian.Uint32(data[0:4]))
+		return totalLength >= 16 && totalLength <= maxKiroEventStreamFrameBytes
+	}
+	return true
 }
 
 func findJSONObjectEnd(data []byte) (int, bool) {

@@ -1,6 +1,8 @@
 package kiro
 
 import (
+	"encoding/binary"
+	"hash/crc32"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,6 +21,32 @@ func TestStreamParserSkipsInvalidAWSFrameHeaderJSONStarts(t *testing.T) {
 	require.Equal(t, "Hello", events[0].Content)
 	require.NotNil(t, events[1].Stop)
 	require.True(t, *events[1].Stop)
+	require.Equal(t, 0, parser.BufferedBytes())
+}
+
+func TestStreamParserParsesAWSEventStreamFramesAcrossFeeds(t *testing.T) {
+	parser := NewStreamParser()
+	stream := append(
+		kiroEventStreamFrame([]byte(`{"content":"Hello"}`)),
+		kiroEventStreamFrame([]byte(`{"stop":true}`))...,
+	)
+
+	events := parser.Feed(stream[:7])
+	require.Empty(t, events)
+	require.Equal(t, 7, parser.BufferedBytes())
+
+	events = parser.Feed(stream[7 : len(stream)-3])
+	require.Len(t, events, 1)
+	require.Equal(t, "Hello", events[0].Content)
+	require.Equal(t, 1, parser.EventStreamFrames())
+	require.Greater(t, parser.BufferedBytes(), 0)
+
+	events = parser.Feed(stream[len(stream)-3:])
+	require.Len(t, events, 1)
+	require.NotNil(t, events[0].Stop)
+	require.True(t, *events[0].Stop)
+	require.Equal(t, 2, parser.EventStreamFrames())
+	require.Equal(t, 0, parser.EventStreamFrameErrors())
 	require.Equal(t, 0, parser.BufferedBytes())
 }
 
@@ -135,4 +163,29 @@ func TestStreamConverterConvertsThinkingTextToThinkingBlock(t *testing.T) {
 	require.Contains(t, events[1].Data, `"thinking":"plan\n"`)
 	require.Contains(t, events[3].Data, `"type":"text"`)
 	require.Contains(t, events[4].Data, `"text":"final"`)
+}
+
+func kiroEventStreamFrame(payload []byte) []byte {
+	headers := appendKiroEventStreamHeader(nil, ":event-type", "assistantResponseEvent")
+	headers = appendKiroEventStreamHeader(headers, ":content-type", "application/json")
+	headers = appendKiroEventStreamHeader(headers, ":message-type", "event")
+
+	totalLength := 12 + len(headers) + len(payload) + 4
+	frame := make([]byte, totalLength)
+	binary.BigEndian.PutUint32(frame[0:4], uint32(totalLength))
+	binary.BigEndian.PutUint32(frame[4:8], uint32(len(headers)))
+	binary.BigEndian.PutUint32(frame[8:12], crc32.ChecksumIEEE(frame[0:8]))
+	copy(frame[12:], headers)
+	copy(frame[12+len(headers):], payload)
+	binary.BigEndian.PutUint32(frame[totalLength-4:], crc32.ChecksumIEEE(frame[:totalLength-4]))
+	return frame
+}
+
+func appendKiroEventStreamHeader(dst []byte, name, value string) []byte {
+	dst = append(dst, byte(len(name)))
+	dst = append(dst, name...)
+	dst = append(dst, 7)
+	dst = binary.BigEndian.AppendUint16(dst, uint16(len(value)))
+	dst = append(dst, value...)
+	return dst
 }

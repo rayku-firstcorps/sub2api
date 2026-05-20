@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -324,7 +325,11 @@ func (s *KiroGatewayService) streamResponse(c *gin.Context, body io.Reader, tool
 
 	outputTokens := estimateTextTokens(outputText.String() + toolInputText.String())
 	if !clientDisconnect && sawPayload && !sawStop {
-		streamDiag.logWarn("missing_stop_event", "output_tokens", outputTokens)
+		missingStopErr := fmt.Errorf("Kiro upstream stream ended without stop event")
+		streamDiag.logError("missing_stop_event", missingStopErr, "output_tokens", outputTokens, "started", started)
+		if !started {
+			return nil, s.writeError(c, http.StatusBadGateway, "api_error", missingStopErr.Error())
+		}
 		converter.SetOutputTokens(outputTokens)
 		if err := writeEvents(converter.Finish(stopReason)); err != nil && !clientDisconnect {
 			streamDiag.logError("finish_write_error", err, "stop_reason", stopReason)
@@ -377,6 +382,11 @@ func (s *KiroGatewayService) nonStreamResponse(c *gin.Context, body io.Reader, t
 	if !collector.hasPayload {
 		streamDiag.logEmpty("empty_non_stream_response", "saw_stop", collector.sawStop)
 		return nil, s.writeError(c, http.StatusBadGateway, "api_error", "Kiro upstream returned empty response")
+	}
+	if !collector.sawStop {
+		missingStopErr := fmt.Errorf("Kiro upstream stream ended without stop event")
+		streamDiag.logError("missing_stop_event", missingStopErr, "has_payload", collector.hasPayload)
+		return nil, s.writeError(c, http.StatusBadGateway, "api_error", missingStopErr.Error())
 	}
 
 	outputTokens := estimateTextTokens(collector.outputText.String() + collector.toolInputText.String())
@@ -474,6 +484,9 @@ type kiroStreamDiagnostics struct {
 	buffered   int
 	invalid    int
 	preview    []byte
+
+	eventStreamFrames      int
+	eventStreamFrameErrors int
 }
 
 func newKiroStreamDiagnostics(ctx context.Context, accountID int64, model string, stream bool) *kiroStreamDiagnostics {
@@ -509,6 +522,8 @@ func (d *kiroStreamDiagnostics) recordParsed(count int, parser *kiro.StreamParse
 	if parser != nil {
 		d.buffered = parser.BufferedBytes()
 		d.invalid = parser.InvalidJSONSkipped()
+		d.eventStreamFrames = parser.EventStreamFrames()
+		d.eventStreamFrameErrors = parser.EventStreamFrameErrors()
 	}
 }
 
@@ -539,6 +554,8 @@ func (d *kiroStreamDiagnostics) recordEOF(parser *kiro.StreamParser) {
 	}
 	d.buffered = parser.BufferedBytes()
 	d.invalid = parser.InvalidJSONSkipped()
+	d.eventStreamFrames = parser.EventStreamFrames()
+	d.eventStreamFrameErrors = parser.EventStreamFrameErrors()
 }
 
 func (d *kiroStreamDiagnostics) recordReadError(err error, parser *kiro.StreamParser) {
@@ -568,7 +585,7 @@ func (d *kiroStreamDiagnostics) logError(reason string, err error, attrs ...any)
 		return
 	}
 	all := append([]any{"error", err}, attrs...)
-	slog.Warn("kiro_gateway.stream_error", d.attrs(reason, all...)...)
+	slog.Error("kiro_gateway.stream_error", d.attrs(reason, all...)...)
 }
 
 func (d *kiroStreamDiagnostics) attrs(reason string, extra ...any) []any {
@@ -590,7 +607,9 @@ func (d *kiroStreamDiagnostics) attrs(reason string, extra ...any) []any {
 		"error_events", d.errors,
 		"parser_buffered_bytes", d.buffered,
 		"parser_invalid_json_skipped", d.invalid,
-		"raw_preview", redactedJSONPreviewForLog(d.preview, kiroStreamPreviewLimit),
+		"event_stream_frames", d.eventStreamFrames,
+		"event_stream_frame_errors", d.eventStreamFrameErrors,
+		"raw_preview", safeBinaryPreviewForLog(d.preview, kiroStreamPreviewLimit),
 	}
 	return append(attrs, extra...)
 }
@@ -979,6 +998,16 @@ func redactedJSONPreviewForLog(body []byte, max int) string {
 		return previewForLog(string(body), max)
 	}
 	return previewForLog(redacted.String(), max)
+}
+
+func safeBinaryPreviewForLog(body []byte, max int) string {
+	if len(body) == 0 {
+		return ""
+	}
+	if max <= 0 || len(body) > max {
+		body = body[:max]
+	}
+	return hex.EncodeToString(body)
 }
 
 func redactSensitiveJSONFields(value any) {

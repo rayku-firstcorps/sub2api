@@ -155,6 +155,26 @@ func TestKiroStreamDiagnosticsCapturesUnusableResponse(t *testing.T) {
 	require.Contains(t, string(diag.preview), "{not-json}")
 }
 
+func TestKiroStreamDiagnosticsUsesBinarySafePreview(t *testing.T) {
+	diag := newKiroStreamDiagnostics(context.Background(), 42, "claude-opus-4-6", true)
+	diag.recordRead([]byte{0, 0, 0, 16, 0xff, '{', 'x', '}'})
+
+	attrs := diag.attrs("test")
+	values := map[string]any{}
+	for i := 0; i+1 < len(attrs); i += 2 {
+		key, ok := attrs[i].(string)
+		if !ok {
+			continue
+		}
+		values[key] = attrs[i+1]
+	}
+
+	preview, ok := values["raw_preview"].(string)
+	require.True(t, ok)
+	require.Equal(t, "00000010ff7b787d", preview)
+	require.NotContains(t, preview, "\x00")
+}
+
 func TestKiroGatewayNonStreamResponseWritesJSONMessageAndUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -192,6 +212,20 @@ func TestKiroGatewayNonStreamResponseWritesJSONMessageAndUsage(t *testing.T) {
 	require.Equal(t, "Hello world", payload.Content[0].Text)
 	require.Equal(t, 9, payload.Usage.InputTokens)
 	require.Equal(t, 3, payload.Usage.OutputTokens)
+}
+
+func TestKiroGatewayNonStreamResponseMissingStopReturns502(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	svc := &KiroGatewayService{}
+
+	result, err := svc.nonStreamResponse(c, strings.NewReader(`{"content":"Hello"}`), nil, "claude-opus-4-6", ClaudeUsage{InputTokens: 9})
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, http.StatusBadGateway, w.Code)
+	require.Contains(t, w.Body.String(), "without stop event")
 }
 
 func TestKiroMessageCollectorMergesRepeatedToolUseEventsWithSameID(t *testing.T) {
