@@ -405,6 +405,21 @@ func TestKiroGatewayNonStreamResponseThinkingOnlyUsesMaxTokens(t *testing.T) {
 	require.Equal(t, " ", gjson.GetBytes(w.Body.Bytes(), "content.1.text").String())
 }
 
+func TestKiroBadRequestDiagnosticsPreviewRedactsSensitiveFields(t *testing.T) {
+	body := []byte(`{
+		"profileArn":"arn:aws:codewhisperer:us-east-1:123456789012:profile/demo",
+		"access_token":"secret-token",
+		"conversationState":{"currentMessage":{"userInputMessage":{"content":"hello"}}}
+	}`)
+
+	preview := redactedJSONPreviewForLog(body, 2000)
+
+	require.Contains(t, preview, "hello")
+	require.Contains(t, preview, "<redacted>")
+	require.NotContains(t, preview, "arn:aws")
+	require.NotContains(t, preview, "secret-token")
+}
+
 func TestGatewayServiceForwardCountTokensKiroUsesLocalEstimate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

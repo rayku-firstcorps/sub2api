@@ -111,6 +111,9 @@ func (s *KiroGatewayService) Forward(ctx context.Context, c *gin.Context, accoun
 			"status", resp.StatusCode,
 			"body", string(respBody),
 		)
+		if resp.StatusCode == http.StatusBadRequest {
+			logKiroBadRequestDiagnostics(c.Request.Context(), account.ID, requestModel, kiroModel, kiroReq, body, reqBody, respBody)
+		}
 		if s.rateLimit != nil {
 			s.rateLimit.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 		}
@@ -539,27 +542,8 @@ func logKiroRequestDiagnostics(ctx context.Context, accountID int64, requestMode
 	var toolSummaries []map[string]any
 	var toolResultIDs []string
 	if current.UserInputMessageContext != nil {
-		for _, tool := range current.UserInputMessageContext.Tools {
-			summary := map[string]any{
-				"name": tool.ToolSpecification.Name,
-			}
-			if schema, ok := tool.ToolSpecification.InputSchema.JSON.(map[string]any); ok {
-				summary["schema_type"] = schema["type"]
-				summary["required"] = schema["required"]
-				if props, ok := schema["properties"].(map[string]any); ok {
-					names := make([]string, 0, len(props))
-					for name := range props {
-						names = append(names, name)
-					}
-					sort.Strings(names)
-					summary["properties"] = names
-				}
-			}
-			toolSummaries = append(toolSummaries, summary)
-		}
-		for _, tr := range current.UserInputMessageContext.ToolResults {
-			toolResultIDs = append(toolResultIDs, tr.ToolUseID)
-		}
+		toolSummaries = summarizeKiroToolsForLog(current.UserInputMessageContext.Tools)
+		toolResultIDs = summarizeKiroToolResultIDsForLog(current.UserInputMessageContext.ToolResults)
 	}
 	slog.Info("kiro_gateway.request_converted",
 		"component", "service.kiro_gateway",
@@ -576,6 +560,276 @@ func logKiroRequestDiagnostics(ctx context.Context, accountID int64, requestMode
 		"current_tools", toolSummaries,
 		"current_tool_result_ids", toolResultIDs,
 	)
+}
+
+func logKiroBadRequestDiagnostics(ctx context.Context, accountID int64, requestModel, kiroModel string, req *kiro.GenerateRequest, claudeBody, reqBody, respBody []byte) {
+	var history []map[string]any
+	var current map[string]any
+	var currentTools []map[string]any
+	var currentToolResultIDs []string
+	var currentToolResults []map[string]any
+	var conversationID string
+
+	if req != nil {
+		conversationID = req.ConversationState.ConversationID
+		history = make([]map[string]any, 0, len(req.ConversationState.History))
+		for i, turn := range req.ConversationState.History {
+			history = append(history, summarizeKiroTurnForLog(i, turn))
+		}
+		if req.ConversationState.CurrentMessage != nil {
+			current = summarizeKiroTurnForLog(-1, *req.ConversationState.CurrentMessage)
+			if user := req.ConversationState.CurrentMessage.UserInputMessage; user != nil && user.UserInputMessageContext != nil {
+				currentTools = summarizeKiroToolsForLog(user.UserInputMessageContext.Tools)
+				currentToolResultIDs = summarizeKiroToolResultIDsForLog(user.UserInputMessageContext.ToolResults)
+				currentToolResults = summarizeKiroToolResultsForLog(user.UserInputMessageContext.ToolResults)
+			}
+		}
+	}
+
+	slog.Warn("kiro_gateway.bad_request_diagnostics",
+		"component", "service.kiro_gateway",
+		"request_id", requestIDFromContext(ctx),
+		"client_request_id", clientRequestIDFromContext(ctx),
+		"account_id", accountID,
+		"model", requestModel,
+		"kiro_model", kiroModel,
+		"conversation_id", conversationID,
+		"upstream_status", http.StatusBadRequest,
+		"upstream_body_bytes", len(respBody),
+		"upstream_body_json_valid", json.Valid(respBody),
+		"upstream_body_json_type", jsonTypeForLog(string(respBody)),
+		"upstream_body_preview", redactedJSONPreviewForLog(respBody, 4000),
+		"claude_request", summarizeClaudeRequestForLog(claudeBody),
+		"claude_body_preview", redactedJSONPreviewForLog(claudeBody, 4000),
+		"kiro_body_bytes", len(reqBody),
+		"kiro_body_json_valid", json.Valid(reqBody),
+		"kiro_body_preview", redactedJSONPreviewForLog(reqBody, 6000),
+		"history_len", len(history),
+		"history", history,
+		"current_message", current,
+		"current_tool_count", len(currentTools),
+		"current_tools", currentTools,
+		"current_tool_result_ids", currentToolResultIDs,
+		"current_tool_results", currentToolResults,
+	)
+}
+
+func summarizeClaudeRequestForLog(body []byte) map[string]any {
+	summary := map[string]any{
+		"body_bytes": len(body),
+		"json_valid": json.Valid(body),
+	}
+	if len(body) == 0 || !json.Valid(body) {
+		return summary
+	}
+
+	parsed := gjson.ParseBytes(body)
+	toolNames := make([]string, 0)
+	for _, tool := range parsed.Get("tools").Array() {
+		name := tool.Get("name").String()
+		if name == "" {
+			name = tool.Get("type").String()
+		}
+		if name != "" {
+			toolNames = append(toolNames, name)
+		}
+	}
+	sort.Strings(toolNames)
+
+	summary["model"] = parsed.Get("model").String()
+	summary["stream"] = parsed.Get("stream").Bool()
+	summary["message_count"] = len(parsed.Get("messages").Array())
+	summary["tool_count"] = len(toolNames)
+	summary["tool_names"] = toolNames
+	summary["thinking_type"] = parsed.Get("thinking.type").String()
+	summary["thinking_budget_tokens"] = parsed.Get("thinking.budget_tokens").Int()
+	summary["system_type"] = claudeFieldTypeForLog(parsed.Get("system"))
+	return summary
+}
+
+func claudeFieldTypeForLog(result gjson.Result) string {
+	if !result.Exists() {
+		return "missing"
+	}
+	if result.IsArray() {
+		return "array"
+	}
+	if result.IsObject() {
+		return "object"
+	}
+	switch result.Type {
+	case gjson.String:
+		return "string"
+	case gjson.Number:
+		return "number"
+	case gjson.True, gjson.False:
+		return "bool"
+	case gjson.Null:
+		return "null"
+	default:
+		return "unknown"
+	}
+}
+
+func summarizeKiroTurnForLog(index int, turn kiro.Turn) map[string]any {
+	summary := map[string]any{
+		"index": index,
+	}
+	if turn.UserInputMessage != nil {
+		user := turn.UserInputMessage
+		summary["role"] = "user"
+		summary["content_len"] = len(user.Content)
+		summary["content_empty"] = strings.TrimSpace(user.Content) == ""
+		summary["content_preview"] = previewForLog(user.Content, 1200)
+		summary["model_id"] = user.ModelID
+		summary["origin"] = user.Origin
+		summary["image_count"] = len(user.Images)
+		summary["has_context"] = user.UserInputMessageContext != nil
+		if user.UserInputMessageContext != nil {
+			summary["tool_count"] = len(user.UserInputMessageContext.Tools)
+			summary["tool_result_count"] = len(user.UserInputMessageContext.ToolResults)
+			summary["tool_result_ids"] = summarizeKiroToolResultIDsForLog(user.UserInputMessageContext.ToolResults)
+		}
+		return summary
+	}
+	if turn.AssistantResponseMessage != nil {
+		assistant := turn.AssistantResponseMessage
+		summary["role"] = "assistant"
+		summary["content_len"] = len(assistant.Content)
+		summary["content_empty"] = strings.TrimSpace(assistant.Content) == ""
+		summary["content_preview"] = previewForLog(assistant.Content, 1200)
+		summary["tool_use_count"] = len(assistant.ToolUses)
+		summary["tool_uses"] = summarizeKiroToolUsesForLog(assistant.ToolUses)
+		return summary
+	}
+	summary["role"] = "empty"
+	return summary
+}
+
+func summarizeKiroToolsForLog(tools []kiro.ToolSpecWrapper) []map[string]any {
+	if len(tools) == 0 {
+		return nil
+	}
+	summaries := make([]map[string]any, 0, len(tools))
+	for _, tool := range tools {
+		spec := tool.ToolSpecification
+		summary := map[string]any{
+			"name":        spec.Name,
+			"description": previewForLog(spec.Description, 300),
+		}
+		if schema, ok := spec.InputSchema.JSON.(map[string]any); ok {
+			summary["schema_type"] = schema["type"]
+			summary["required"] = schema["required"]
+			if props, ok := schema["properties"].(map[string]any); ok {
+				names := make([]string, 0, len(props))
+				for name := range props {
+					names = append(names, name)
+				}
+				sort.Strings(names)
+				summary["properties"] = names
+			}
+		} else if spec.InputSchema.JSON != nil {
+			schemaJSON, _ := json.Marshal(spec.InputSchema.JSON)
+			summary["schema_type"] = jsonTypeForLog(string(schemaJSON))
+			summary["schema_preview"] = previewForLog(string(schemaJSON), 800)
+		}
+		summaries = append(summaries, summary)
+	}
+	return summaries
+}
+
+func summarizeKiroToolResultIDsForLog(results []kiro.ToolResult) []string {
+	if len(results) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(results))
+	for _, result := range results {
+		ids = append(ids, result.ToolUseID)
+	}
+	return ids
+}
+
+func summarizeKiroToolResultsForLog(results []kiro.ToolResult) []map[string]any {
+	if len(results) == 0 {
+		return nil
+	}
+	summaries := make([]map[string]any, 0, len(results))
+	for _, result := range results {
+		textParts := make([]string, 0, len(result.Content))
+		for _, content := range result.Content {
+			textParts = append(textParts, content.Text)
+		}
+		text := strings.Join(textParts, "")
+		summaries = append(summaries, map[string]any{
+			"tool_use_id": result.ToolUseID,
+			"status":      result.Status,
+			"content_len": len(text),
+			"preview":     previewForLog(text, 1200),
+		})
+	}
+	return summaries
+}
+
+func summarizeKiroToolUsesForLog(toolUses []kiro.ToolUse) []map[string]any {
+	if len(toolUses) == 0 {
+		return nil
+	}
+	summaries := make([]map[string]any, 0, len(toolUses))
+	for _, toolUse := range toolUses {
+		summary := map[string]any{
+			"tool_use_id": toolUse.ToolUseID,
+			"name":        toolUse.Name,
+		}
+		if toolUse.Input != nil {
+			inputJSON, _ := json.Marshal(toolUse.Input)
+			summary["input_json_type"] = jsonTypeForLog(string(inputJSON))
+			summary["input_preview"] = previewForLog(string(inputJSON), 1200)
+		}
+		summaries = append(summaries, summary)
+	}
+	return summaries
+}
+
+func redactedJSONPreviewForLog(body []byte, max int) string {
+	var value any
+	if len(body) == 0 || json.Unmarshal(body, &value) != nil {
+		return previewForLog(string(body), max)
+	}
+	redactSensitiveJSONFields(value)
+	var redacted bytes.Buffer
+	encoder := json.NewEncoder(&redacted)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return previewForLog(string(body), max)
+	}
+	return previewForLog(redacted.String(), max)
+}
+
+func redactSensitiveJSONFields(value any) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if isSensitiveLogKey(key) {
+				typed[key] = "<redacted>"
+				continue
+			}
+			redactSensitiveJSONFields(child)
+		}
+	case []any:
+		for _, child := range typed {
+			redactSensitiveJSONFields(child)
+		}
+	}
+}
+
+func isSensitiveLogKey(key string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "_", ""), "-", ""))
+	switch normalized {
+	case "authorization", "accesstoken", "refreshtoken", "idtoken", "clientsecret", "apikey", "profilearn":
+		return true
+	default:
+		return strings.Contains(normalized, "secret") || strings.Contains(normalized, "token")
+	}
 }
 
 func requestIDFromContext(ctx context.Context) string {
