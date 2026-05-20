@@ -209,10 +209,6 @@ func (c *StreamConverter) Convert(evt StreamEvent) []AnthropicSSEEvent {
 
 func (c *StreamConverter) appendToolInput(events *[]AnthropicSSEEvent, input string) {
 	c.inputAccum += input
-	*events = append(*events, AnthropicSSEEvent{
-		Event: "content_block_delta",
-		Data:  fmt.Sprintf(`{"type":"content_block_delta","index":%d,"delta":{"type":"input_json_delta","partial_json":%s}}`, c.toolIdx, jsonStr(input)),
-	})
 }
 
 func (c *StreamConverter) SetOutputTokens(tokens int) {
@@ -273,12 +269,25 @@ func (c *StreamConverter) closeThinking(events *[]AnthropicSSEEvent) {
 
 func (c *StreamConverter) closeTool(events *[]AnthropicSSEEvent) {
 	if c.inTool {
+		c.flushToolInput(events)
 		*events = append(*events, AnthropicSSEEvent{
 			Event: "content_block_stop",
 			Data:  fmt.Sprintf(`{"type":"content_block_stop","index":%d}`, c.toolIdx),
 		})
 		c.inTool = false
 	}
+}
+
+func (c *StreamConverter) flushToolInput(events *[]AnthropicSSEEvent) {
+	if strings.TrimSpace(c.inputAccum) == "" {
+		return
+	}
+	input := normalizeToolInputJSON(c.inputAccum)
+	*events = append(*events, AnthropicSSEEvent{
+		Event: "content_block_delta",
+		Data:  fmt.Sprintf(`{"type":"content_block_delta","index":%d,"delta":{"type":"input_json_delta","partial_json":%s}}`, c.toolIdx, jsonStr(input)),
+	})
+	c.inputAccum = ""
 }
 
 func (c *StreamConverter) appendParsedContentBlock(events *[]AnthropicSSEEvent, block ParsedContentBlock) {
@@ -352,6 +361,40 @@ func (c *StreamConverter) StopReason() string {
 		return "tool_use"
 	}
 	return "end_turn"
+}
+
+func normalizeToolInputJSON(input string) string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return ""
+	}
+	if normalized, ok := normalizeToolInputJSONObject(input); ok {
+		return normalized
+	}
+	if normalized, ok := normalizeToolInputJSONObject(repairKiroJSON(input)); ok {
+		return normalized
+	}
+	return input
+}
+
+func normalizeToolInputJSONObject(input string) (string, bool) {
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(input), &obj); err != nil {
+		return "", false
+	}
+	if obj == nil {
+		return "{}", true
+	}
+	for key := range obj {
+		if strings.TrimSpace(key) == "" {
+			delete(obj, key)
+		}
+	}
+	normalized, err := json.Marshal(obj)
+	if err != nil {
+		return "", false
+	}
+	return string(normalized), true
 }
 
 func jsonStr(s string) string {

@@ -70,20 +70,18 @@ func TestStreamConverterMergesRepeatedToolUseEventsWithSameID(t *testing.T) {
 	require.Equal(t, "content_block_start", events[0].Event)
 
 	events = converter.Convert(StreamEvent{Name: "WebFetch", ToolUseID: "toolu_1", Input: JSONText(`{"url": "`)})
-	require.Len(t, events, 1)
-	require.Equal(t, "content_block_delta", events[0].Event)
-	require.Contains(t, events[0].Data, `"partial_json":"{\"url\": \""`)
+	require.Empty(t, events)
 
 	events = converter.Convert(StreamEvent{Name: "WebFetch", ToolUseID: "toolu_1", Input: JSONText(`https://example.com", "prompt": "read"}`)})
-	require.Len(t, events, 1)
-	require.Equal(t, "content_block_delta", events[0].Event)
-	require.NotContains(t, events[0].Data, "content_block_start")
+	require.Empty(t, events)
 
 	stop := true
 	events = converter.Convert(StreamEvent{Stop: &stop})
-	require.Len(t, events, 3)
-	require.Equal(t, "content_block_stop", events[0].Event)
-	require.Contains(t, events[1].Data, `"stop_reason":"tool_use"`)
+	require.Len(t, events, 4)
+	require.Equal(t, "content_block_delta", events[0].Event)
+	require.Contains(t, events[0].Data, `"partial_json":"{\"prompt\":\"read\",\"url\":\"https://example.com\"}"`)
+	require.Equal(t, "content_block_stop", events[1].Event)
+	require.Contains(t, events[2].Data, `"stop_reason":"tool_use"`)
 }
 
 func TestParseKiroContentBlocksExtractsThinkingAndBracketToolCall(t *testing.T) {
