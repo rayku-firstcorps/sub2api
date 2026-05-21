@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unicode"
@@ -20,6 +21,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/longbridgeapp/opencc"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -41,7 +43,9 @@ const (
 	maxKeywordFilterRetentionDays        = 3650
 	maxKeywordFilterExcerptRunes         = 240
 	maxKeywordFilterPatternRunes         = 256
+	maxKeywordFilterRegexPatternRunes    = 512
 	maxKeywordFilterRules                = 1000
+	keywordFilterRuntimeCacheTTL         = 5 * time.Second
 	keywordFilterCleanupInterval         = 24 * time.Hour
 	keywordFilterCleanupDelay            = 7 * time.Minute
 	keywordFilterCleanupTimeout          = 30 * time.Minute
@@ -204,8 +208,48 @@ type KeywordFilterService struct {
 	repo              KeywordFilterRepository
 	groupRepo         GroupRepository
 	converter         *opencc.OpenCC
+	runtimeCache      atomic.Value // *keywordFilterRuntimeSnapshot
+	runtimeRefresh    singleflight.Group
 	lastCleanupUnix   atomic.Int64
 	lastCleanupDelete atomic.Int64
+	cleanupCtx        context.Context
+	cleanupCancel     context.CancelFunc
+	stopCh            chan struct{}
+	stopOnce          sync.Once
+	cleanupWG         sync.WaitGroup
+}
+
+type keywordFilterRuntimeSnapshot struct {
+	systemEnabled bool
+	config        *KeywordFilterConfig
+	compiled      *keywordFilterCompiledRules
+	rulesHash     string
+	expiresAt     time.Time
+}
+
+type keywordFilterCompiledRules struct {
+	matcher                  *keywordFilterMatcher
+	rulePatterns             map[string][]compiledKeywordFilterRule
+	globalWhitelistRules     []compiledKeywordFilterWhitelistRule
+	whitelistRulesByTargetID map[string][]compiledKeywordFilterWhitelistRule
+	regexRules               []compiledKeywordFilterRegexRule
+}
+
+type compiledKeywordFilterRule struct {
+	Rule              KeywordFilterRule
+	ResolvedMatchMode string
+	NormalizedPattern string
+}
+
+type compiledKeywordFilterWhitelistRule struct {
+	Rule              KeywordFilterWhitelistRule
+	ResolvedMatchMode string
+	NormalizedPattern string
+}
+
+type compiledKeywordFilterRegexRule struct {
+	Rule KeywordFilterRegexRule
+	Re   *regexp.Regexp
 }
 
 func NewKeywordFilterService(settingRepo SettingRepository, repo KeywordFilterRepository, groupRepo GroupRepository) *KeywordFilterService {
@@ -215,16 +259,36 @@ func NewKeywordFilterService(settingRepo SettingRepository, repo KeywordFilterRe
 	} else {
 		slog.Warn("keyword_filter.opencc_init_failed", "error", err)
 	}
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 	svc := &KeywordFilterService{
-		settingRepo: settingRepo,
-		repo:        repo,
-		groupRepo:   groupRepo,
-		converter:   converter,
+		settingRepo:   settingRepo,
+		repo:          repo,
+		groupRepo:     groupRepo,
+		converter:     converter,
+		cleanupCtx:    cleanupCtx,
+		cleanupCancel: cleanupCancel,
+		stopCh:        make(chan struct{}),
 	}
 	if settingRepo != nil && repo != nil {
+		svc.cleanupWG.Add(1)
 		go svc.cleanupWorker()
 	}
 	return svc
+}
+
+func (s *KeywordFilterService) Stop() {
+	if s == nil {
+		return
+	}
+	s.stopOnce.Do(func() {
+		if s.cleanupCancel != nil {
+			s.cleanupCancel()
+		}
+		if s.stopCh != nil {
+			close(s.stopCh)
+		}
+	})
+	s.cleanupWG.Wait()
 }
 
 func (s *KeywordFilterService) GetConfig(ctx context.Context) (*KeywordFilterConfigView, error) {
@@ -261,6 +325,9 @@ func (s *KeywordFilterService) UpdateConfig(ctx context.Context, input UpdateKey
 	if err := s.settingRepo.Set(ctx, SettingKeyKeywordFilterConfig, string(raw)); err != nil {
 		return nil, fmt.Errorf("save keyword filter config: %w", err)
 	}
+	if _, err := s.refreshRuntimeSnapshot(ctx, cfg); err != nil {
+		slog.Warn("keyword_filter.runtime_cache_refresh_failed", "error", err)
+	}
 	view := *cfg
 	return &view, nil
 }
@@ -270,14 +337,15 @@ func (s *KeywordFilterService) Check(ctx context.Context, input KeywordFilterChe
 	if s == nil || s.settingRepo == nil || s.repo == nil {
 		return allow, nil
 	}
-	if !s.isKeywordFilterEnabled(ctx) {
-		return allow, nil
-	}
-	cfg, err := s.loadConfig(ctx)
+	snapshot, err := s.runtimeSnapshot(ctx)
 	if err != nil {
 		slog.Warn("keyword_filter.config_load_failed", "error", err)
 		return allow, nil
 	}
+	if snapshot == nil || !snapshot.systemEnabled || snapshot.config == nil {
+		return allow, nil
+	}
+	cfg := snapshot.config
 	if !cfg.Enabled || !cfg.includesGroup(input.GroupID) {
 		return allow, nil
 	}
@@ -286,7 +354,7 @@ func (s *KeywordFilterService) Check(ctx context.Context, input KeywordFilterChe
 		return allow, nil
 	}
 	normalizedSegments := s.normalizeSegments(segments)
-	match := s.matchSegments(cfg, normalizedSegments)
+	match := s.matchCompiledSegments(snapshot.compiled, normalizedSegments)
 	if match == nil {
 		return allow, nil
 	}
@@ -403,6 +471,116 @@ func (s *KeywordFilterService) isKeywordFilterEnabled(ctx context.Context) bool 
 	return raw == "true"
 }
 
+func (s *KeywordFilterService) runtimeSnapshot(ctx context.Context) (*keywordFilterRuntimeSnapshot, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, nil
+	}
+	if cached, ok := s.runtimeCache.Load().(*keywordFilterRuntimeSnapshot); ok && cached != nil && time.Now().Before(cached.expiresAt) {
+		return cached, nil
+	}
+	value, err, _ := s.runtimeRefresh.Do("keyword_filter_runtime", func() (any, error) {
+		if cached, ok := s.runtimeCache.Load().(*keywordFilterRuntimeSnapshot); ok && cached != nil && time.Now().Before(cached.expiresAt) {
+			return cached, nil
+		}
+		return s.refreshRuntimeSnapshot(ctx, nil)
+	})
+	if err != nil {
+		return nil, err
+	}
+	snapshot, _ := value.(*keywordFilterRuntimeSnapshot)
+	return snapshot, nil
+}
+
+func (s *KeywordFilterService) refreshRuntimeSnapshot(ctx context.Context, cfgOverride *KeywordFilterConfig) (*keywordFilterRuntimeSnapshot, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, nil
+	}
+	systemEnabled := s.isKeywordFilterEnabled(ctx)
+	cfg := cfgOverride
+	if cfg == nil {
+		if !systemEnabled {
+			if previous, ok := s.runtimeCache.Load().(*keywordFilterRuntimeSnapshot); ok && previous != nil && previous.config != nil {
+				cfg = previous.config
+			} else {
+				cfg = defaultKeywordFilterConfig()
+			}
+		} else {
+			loaded, err := s.loadConfig(ctx)
+			if err != nil {
+				return nil, err
+			}
+			cfg = loaded
+		}
+	}
+	cfg = cloneKeywordFilterConfig(cfg)
+	cfg.normalize()
+	rulesHash := keywordFilterRulesHash(cfg)
+	compiled := (*keywordFilterCompiledRules)(nil)
+	if previous, ok := s.runtimeCache.Load().(*keywordFilterRuntimeSnapshot); ok && previous != nil && previous.rulesHash == rulesHash && previous.compiled != nil {
+		compiled = previous.compiled
+	} else {
+		var err error
+		compiled, err = s.compileKeywordFilterRules(cfg)
+		if err != nil {
+			return nil, err
+		}
+	}
+	snapshot := &keywordFilterRuntimeSnapshot{
+		systemEnabled: systemEnabled,
+		config:        cfg,
+		compiled:      compiled,
+		rulesHash:     rulesHash,
+		expiresAt:     time.Now().Add(keywordFilterRuntimeCacheTTL),
+	}
+	s.runtimeCache.Store(snapshot)
+	return snapshot, nil
+}
+
+func (s *KeywordFilterService) compileKeywordFilterRules(cfg *KeywordFilterConfig) (*keywordFilterCompiledRules, error) {
+	compiled := &keywordFilterCompiledRules{whitelistRulesByTargetID: map[string][]compiledKeywordFilterWhitelistRule{}}
+	if cfg == nil {
+		return compiled, nil
+	}
+	keywordRules := cfg.effectiveKeywordRules()
+	compiled.matcher, compiled.rulePatterns = s.buildKeywordRuleMatcher(keywordRules)
+	for _, rule := range cfg.effectiveWhitelistRules() {
+		if !rule.Enabled || strings.TrimSpace(rule.Pattern) == "" {
+			continue
+		}
+		normalized := s.normalizeText(rule.Pattern).Text
+		if normalized == "" {
+			continue
+		}
+		compiledWhitelist := compiledKeywordFilterWhitelistRule{
+			Rule:              rule,
+			ResolvedMatchMode: resolveKeywordFilterMatchMode(rule.Pattern, rule.MatchMode),
+			NormalizedPattern: normalized,
+		}
+		if len(rule.TargetRuleIDs) == 0 {
+			compiled.globalWhitelistRules = append(compiled.globalWhitelistRules, compiledWhitelist)
+			continue
+		}
+		for _, targetID := range rule.TargetRuleIDs {
+			targetID = strings.ToLower(targetID)
+			if targetID == "" {
+				continue
+			}
+			compiled.whitelistRulesByTargetID[targetID] = append(compiled.whitelistRulesByTargetID[targetID], compiledWhitelist)
+		}
+	}
+	for _, rule := range cfg.RegexRules {
+		if !rule.Enabled {
+			continue
+		}
+		re, err := regexp.Compile(rule.Pattern)
+		if err != nil {
+			return nil, fmt.Errorf("compile keyword filter regex %q: %w", rule.Name, err)
+		}
+		compiled.regexRules = append(compiled.regexRules, compiledKeywordFilterRegexRule{Rule: rule, Re: re})
+	}
+	return compiled, nil
+}
+
 func (s *KeywordFilterService) validateConfig(ctx context.Context, cfg *KeywordFilterConfig) error {
 	if cfg == nil {
 		return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_CONFIG", "关键词过滤配置不能为空")
@@ -433,6 +611,12 @@ func (s *KeywordFilterService) validateConfig(ctx context.Context, cfg *KeywordF
 		}
 		if strings.TrimSpace(rule.Pattern) == "" {
 			return infraerrors.BadRequest("KEYWORD_FILTER_REGEX_PATTERN_REQUIRED", "正则表达式不能为空")
+		}
+		if utf8.RuneCountInString(rule.Pattern) > maxKeywordFilterRegexPatternRunes {
+			return infraerrors.BadRequest("KEYWORD_FILTER_REGEX_TOO_LONG", "keyword filter regex pattern is too long")
+		}
+		if !keywordFilterRegexHasFeature(rule.Pattern) {
+			return infraerrors.BadRequest("KEYWORD_FILTER_REGEX_LITERAL_PATTERN", "regex rule must contain regex syntax; add plain terms to keyword rules")
 		}
 		if _, err := regexp.Compile(rule.Pattern); err != nil {
 			return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_REGEX", fmt.Sprintf("Invalid regex rule: %s", rule.Name))
@@ -497,59 +681,70 @@ func (s *KeywordFilterService) matchSegments(cfg *KeywordFilterConfig, segments 
 	if cfg == nil || len(segments) == 0 {
 		return nil
 	}
+	cfg = cloneKeywordFilterConfig(cfg)
 	cfg.normalize()
-	keywordRules := cfg.effectiveKeywordRules()
-	whitelistRules := cfg.effectiveWhitelistRules()
-	matcher, rulePatterns := s.buildKeywordRuleMatcher(keywordRules)
+	compiled, err := s.compileKeywordFilterRules(cfg)
+	if err != nil {
+		return nil
+	}
+	return s.matchCompiledSegments(compiled, segments)
+}
+
+func (s *KeywordFilterService) matchCompiledSegments(compiled *keywordFilterCompiledRules, segments []keywordFilterNormalizedSegment) *keywordFilterMatch {
+	if compiled == nil || len(segments) == 0 {
+		return nil
+	}
 	for _, segment := range segments {
 		input := segment.Normalized
-		if strings.TrimSpace(input.Text) != "" && matcher != nil {
-			for _, found := range matcher.FindAll(input.Text) {
-				for _, rule := range rulePatterns[found.Pattern] {
-					resolvedMode := resolveKeywordFilterMatchMode(rule.Pattern, rule.MatchMode)
-					matchRange, ok := s.validateKeywordRuleMatch(rule, resolvedMode, input, found.Start, found.End)
+		if strings.TrimSpace(input.Text) != "" && compiled.matcher != nil {
+			var keywordMatch *keywordFilterMatch
+			compiled.matcher.Scan(input.Text, func(found keywordFilterACMatch) bool {
+				for _, rule := range compiled.rulePatterns[found.Pattern] {
+					matchRange, ok := s.validateKeywordRuleMatch(rule, input, found.Start, found.End)
 					if !ok {
 						continue
 					}
 					display := input.originalForNormalizedRange(matchRange.Start, matchRange.End)
 					match := &keywordFilterMatch{
 						MatchType:         KeywordFilterMatchTypeKeyword,
-						RuleID:            rule.ID,
-						RuleName:          keywordFilterRuleDisplayName(rule, resolvedMode),
-						MatchedText:       rule.Pattern,
+						RuleID:            rule.Rule.ID,
+						RuleName:          keywordFilterRuleDisplayName(rule.Rule, rule.ResolvedMatchMode),
+						MatchedText:       rule.Rule.Pattern,
 						DisplayText:       sanitizeKeywordFilterMatchedText(display),
-						MatchMode:         normalizeKeywordFilterMatchMode(rule.MatchMode),
-						ResolvedMatchMode: resolvedMode,
+						MatchMode:         normalizeKeywordFilterMatchMode(rule.Rule.MatchMode),
+						ResolvedMatchMode: rule.ResolvedMatchMode,
 						SegmentIndex:      segment.Segment.SegmentIndex,
 						MessageIndex:      segment.Segment.MessageIndex,
 						PartIndex:         segment.Segment.PartIndex,
 						SegmentText:       trimRunes(segment.Segment.Text, maxKeywordFilterExcerptRunes),
 					}
-					if s.keywordMatchCoveredByWhitelist(match, matchRange, input, whitelistRules) {
+					if s.keywordMatchCoveredByCompiledWhitelist(match, matchRange, input, compiled) {
 						match.Whitelisted = true
 						continue
 					}
-					return match
+					keywordMatch = match
+					return false
 				}
+				return true
+			})
+			if keywordMatch != nil {
+				return keywordMatch
 			}
 		}
-		if match := s.matchRegexRules(cfg.RegexRules, input, segment.Segment); match != nil {
+		if match := s.matchCompiledRegexRules(compiled.regexRules, input, segment.Segment); match != nil {
 			return match
 		}
 	}
 	return nil
 }
 
-func (s *KeywordFilterService) matchRegexRules(rules []KeywordFilterRegexRule, input normalizedKeywordText, segment KeywordFilterTextSegment) *keywordFilterMatch {
-	for _, rule := range rules {
-		if !rule.Enabled {
+func (s *KeywordFilterService) matchCompiledRegexRules(rules []compiledKeywordFilterRegexRule, input normalizedKeywordText, segment KeywordFilterTextSegment) *keywordFilterMatch {
+	for _, compiled := range rules {
+		if compiled.Re == nil {
 			continue
 		}
-		re, err := regexp.Compile(rule.Pattern)
-		if err != nil {
-			continue
-		}
-		loc := re.FindStringIndex(input.RegexText)
+		rule := compiled.Rule
+		loc := compiled.Re.FindStringIndex(input.RegexText)
 		if len(loc) == 2 {
 			display := input.originalForRegexRange(loc[0], loc[1])
 			return &keywordFilterMatch{
@@ -613,8 +808,8 @@ func (s *KeywordFilterService) normalizedWhitelistRanges(patterns []string, text
 	return ranges
 }
 
-func (s *KeywordFilterService) buildKeywordRuleMatcher(rules []KeywordFilterRule) (*keywordFilterMatcher, map[string][]KeywordFilterRule) {
-	patternMap := make(map[string][]KeywordFilterRule)
+func (s *KeywordFilterService) buildKeywordRuleMatcher(rules []KeywordFilterRule) (*keywordFilterMatcher, map[string][]compiledKeywordFilterRule) {
+	patternMap := make(map[string][]compiledKeywordFilterRule)
 	patterns := make([]string, 0, len(rules))
 	for _, rule := range rules {
 		if !rule.Enabled || strings.TrimSpace(rule.Pattern) == "" {
@@ -627,7 +822,11 @@ func (s *KeywordFilterService) buildKeywordRuleMatcher(rules []KeywordFilterRule
 		if _, ok := patternMap[normalized]; !ok {
 			patterns = append(patterns, normalized)
 		}
-		patternMap[normalized] = append(patternMap[normalized], rule)
+		patternMap[normalized] = append(patternMap[normalized], compiledKeywordFilterRule{
+			Rule:              rule,
+			ResolvedMatchMode: resolveKeywordFilterMatchMode(rule.Pattern, rule.MatchMode),
+			NormalizedPattern: normalized,
+		})
 	}
 	if len(patterns) == 0 {
 		return nil, patternMap
@@ -635,16 +834,16 @@ func (s *KeywordFilterService) buildKeywordRuleMatcher(rules []KeywordFilterRule
 	return newKeywordFilterMatcher(patterns), patternMap
 }
 
-func (s *KeywordFilterService) validateKeywordRuleMatch(rule KeywordFilterRule, resolvedMode string, input normalizedKeywordText, start int, end int) (keywordFilterRange, bool) {
-	pattern := s.normalizeText(rule.Pattern).Text
+func (s *KeywordFilterService) validateKeywordRuleMatch(rule compiledKeywordFilterRule, input normalizedKeywordText, start int, end int) (keywordFilterRange, bool) {
+	pattern := rule.NormalizedPattern
 	if pattern == "" || start < 0 || end <= start {
 		return keywordFilterRange{}, false
 	}
 	matchRange := keywordFilterRange{Start: start, End: end}
-	if resolvedMode != KeywordFilterMatchModeContains && keywordFilterMatchCrossesHardPunctuation(input, matchRange) {
+	if rule.ResolvedMatchMode != KeywordFilterMatchModeContains && keywordFilterMatchCrossesHardPunctuation(input, matchRange) {
 		return keywordFilterRange{}, false
 	}
-	switch resolvedMode {
+	switch rule.ResolvedMatchMode {
 	case KeywordFilterMatchModeContains, KeywordFilterMatchModeFuzzy:
 		return matchRange, true
 	case KeywordFilterMatchModeToken:
@@ -652,11 +851,11 @@ func (s *KeywordFilterService) validateKeywordRuleMatch(rule KeywordFilterRule, 
 			return matchRange, true
 		}
 	case KeywordFilterMatchModeExactPhrase:
-		if keywordFilterPhraseAllowed(rule.Pattern, input, matchRange) {
+		if keywordFilterPhraseAllowed(rule.Rule.Pattern, input, matchRange) {
 			return matchRange, true
 		}
 	case KeywordFilterMatchModeCJKToken:
-		if keywordFilterCJKTokenAllowed(rule.Pattern, input, matchRange) {
+		if keywordFilterCJKTokenAllowed(rule.Rule.Pattern, input, matchRange) {
 			return matchRange, true
 		}
 	default:
@@ -669,16 +868,24 @@ func keywordFilterMatchCrossesHardPunctuation(input normalizedKeywordText, match
 	return keywordFilterContainsHardPunctuation(input.originalForNormalizedRange(matchRange.Start, matchRange.End))
 }
 
-func (s *KeywordFilterService) keywordMatchCoveredByWhitelist(match *keywordFilterMatch, matchRange keywordFilterRange, input normalizedKeywordText, whitelistRules []KeywordFilterWhitelistRule) bool {
-	for _, rule := range whitelistRules {
-		if !rule.Enabled || strings.TrimSpace(rule.Pattern) == "" {
-			continue
+func (s *KeywordFilterService) keywordMatchCoveredByCompiledWhitelist(match *keywordFilterMatch, matchRange keywordFilterRange, input normalizedKeywordText, compiled *keywordFilterCompiledRules) bool {
+	if compiled == nil {
+		return false
+	}
+	if s.keywordMatchCoveredByCompiledWhitelistRules(matchRange, input, compiled.globalWhitelistRules) {
+		return true
+	}
+	if match != nil && match.RuleID != "" {
+		if s.keywordMatchCoveredByCompiledWhitelistRules(matchRange, input, compiled.whitelistRulesByTargetID[strings.ToLower(match.RuleID)]) {
+			return true
 		}
-		if len(rule.TargetRuleIDs) > 0 && !keywordFilterStringInSlice(match.RuleID, rule.TargetRuleIDs) {
-			continue
-		}
-		resolvedMode := resolveKeywordFilterMatchMode(rule.Pattern, rule.MatchMode)
-		pattern := s.normalizeText(rule.Pattern).Text
+	}
+	return false
+}
+
+func (s *KeywordFilterService) keywordMatchCoveredByCompiledWhitelistRules(matchRange keywordFilterRange, input normalizedKeywordText, whitelistRules []compiledKeywordFilterWhitelistRule) bool {
+	for _, item := range whitelistRules {
+		pattern := item.NormalizedPattern
 		if pattern == "" {
 			continue
 		}
@@ -690,7 +897,7 @@ func (s *KeywordFilterService) keywordMatchCoveredByWhitelist(match *keywordFilt
 			}
 			begin := start + idx
 			end := begin + len(pattern)
-			whitelistRange, ok := s.validateWhitelistRuleMatch(rule, resolvedMode, input, begin, end)
+			whitelistRange, ok := s.validateCompiledWhitelistRuleMatch(item, input, begin, end)
 			if ok && whitelistRange.Start <= matchRange.Start && whitelistRange.End >= matchRange.End {
 				return true
 			}
@@ -704,14 +911,26 @@ func (s *KeywordFilterService) keywordMatchCoveredByWhitelist(match *keywordFilt
 }
 
 func (s *KeywordFilterService) validateWhitelistRuleMatch(rule KeywordFilterWhitelistRule, resolvedMode string, input normalizedKeywordText, start int, end int) (keywordFilterRange, bool) {
-	filterRule := KeywordFilterRule{
-		ID:        rule.ID,
-		Pattern:   rule.Pattern,
-		MatchMode: rule.MatchMode,
-		Enabled:   rule.Enabled,
-		Action:    KeywordFilterActionBlock,
+	return s.validateCompiledWhitelistRuleMatch(compiledKeywordFilterWhitelistRule{
+		Rule:              rule,
+		ResolvedMatchMode: resolvedMode,
+		NormalizedPattern: s.normalizeText(rule.Pattern).Text,
+	}, input, start, end)
+}
+
+func (s *KeywordFilterService) validateCompiledWhitelistRuleMatch(rule compiledKeywordFilterWhitelistRule, input normalizedKeywordText, start int, end int) (keywordFilterRange, bool) {
+	filterRule := compiledKeywordFilterRule{
+		Rule: KeywordFilterRule{
+			ID:        rule.Rule.ID,
+			Pattern:   rule.Rule.Pattern,
+			MatchMode: rule.Rule.MatchMode,
+			Enabled:   rule.Rule.Enabled,
+			Action:    KeywordFilterActionBlock,
+		},
+		ResolvedMatchMode: rule.ResolvedMatchMode,
+		NormalizedPattern: rule.NormalizedPattern,
 	}
-	return s.validateKeywordRuleMatch(filterRule, resolvedMode, input, start, end)
+	return s.validateKeywordRuleMatch(filterRule, input, start, end)
 }
 
 func InferKeywordFilterMatchMode(pattern string) string {
@@ -1109,12 +1328,17 @@ func (s *KeywordFilterService) buildLog(input KeywordFilterCheckInput, cfg *Keyw
 }
 
 func (s *KeywordFilterService) cleanupWorker() {
+	defer s.cleanupWG.Done()
 	timer := time.NewTimer(keywordFilterCleanupDelay)
 	defer timer.Stop()
 	for {
-		<-timer.C
-		s.runCleanupOnce()
-		timer.Reset(keywordFilterCleanupInterval)
+		select {
+		case <-timer.C:
+			s.runCleanupOnce()
+			timer.Reset(keywordFilterCleanupInterval)
+		case <-s.stopCh:
+			return
+		}
 	}
 }
 
@@ -1122,7 +1346,11 @@ func (s *KeywordFilterService) runCleanupOnce() {
 	if s == nil || s.repo == nil || s.settingRepo == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), keywordFilterCleanupTimeout)
+	parent := s.cleanupCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, keywordFilterCleanupTimeout)
 	defer cancel()
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
@@ -1378,6 +1606,42 @@ func keywordFilterLegacyWhitelistFromRules(rules []KeywordFilterWhitelistRule) [
 	return normalizeKeywordFilterList(values)
 }
 
+func cloneKeywordFilterConfig(cfg *KeywordFilterConfig) *KeywordFilterConfig {
+	if cfg == nil {
+		return nil
+	}
+	clone := *cfg
+	clone.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
+	clone.Keywords = append([]string(nil), cfg.Keywords...)
+	clone.Whitelist = append([]string(nil), cfg.Whitelist...)
+	clone.KeywordRules = append([]KeywordFilterRule(nil), cfg.KeywordRules...)
+	clone.WhitelistRules = make([]KeywordFilterWhitelistRule, len(cfg.WhitelistRules))
+	for i, rule := range cfg.WhitelistRules {
+		clone.WhitelistRules[i] = rule
+		clone.WhitelistRules[i].TargetRuleIDs = append([]string(nil), rule.TargetRuleIDs...)
+	}
+	clone.RegexRules = append([]KeywordFilterRegexRule(nil), cfg.RegexRules...)
+	return &clone
+}
+
+func keywordFilterRulesHash(cfg *KeywordFilterConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	type rulesOnly struct {
+		KeywordRules   []KeywordFilterRule          `json:"keyword_rules"`
+		WhitelistRules []KeywordFilterWhitelistRule `json:"whitelist_rules"`
+		RegexRules     []KeywordFilterRegexRule     `json:"regex_rules"`
+	}
+	payload, _ := json.Marshal(rulesOnly{
+		KeywordRules:   cfg.effectiveKeywordRules(),
+		WhitelistRules: cfg.effectiveWhitelistRules(),
+		RegexRules:     cfg.RegexRules,
+	})
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])
+}
+
 func normalizeKeywordFilterMatchMode(mode string) string {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	switch mode {
@@ -1509,6 +1773,28 @@ func keywordFilterConfigPatchProvided(input UpdateKeywordFilterConfigInput) bool
 		input.HitRetentionDays != nil
 }
 
+func keywordFilterRegexHasFeature(pattern string) bool {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return false
+	}
+	for i := 0; i < len(pattern); i++ {
+		if keywordFilterRegexFeatureByte(pattern[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func keywordFilterRegexFeatureByte(ch byte) bool {
+	switch ch {
+	case '\\', '[', ']', '(', ')', '{', '}', '.', '*', '+', '?', '|':
+		return true
+	default:
+		return false
+	}
+}
+
 func mergeKeywordFilterRegexRules(rules []KeywordFilterRegexRule) []KeywordFilterRegexRule {
 	normalized := normalizeKeywordFilterRegexRules(rules)
 	byName := make(map[string]int, len(normalized))
@@ -1627,10 +1913,11 @@ func (n normalizedKeywordText) originalBoundsForRange(start, end int, spans []ke
 	}
 	origStart := -1
 	origEnd := -1
-	for _, span := range spans {
-		if span.End <= start {
-			continue
-		}
+	first := sort.Search(len(spans), func(i int) bool {
+		return spans[i].End > start
+	})
+	for i := first; i < len(spans); i++ {
+		span := spans[i]
 		if span.Start >= end {
 			break
 		}

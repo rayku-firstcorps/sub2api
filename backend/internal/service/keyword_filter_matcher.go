@@ -1,5 +1,7 @@
 package service
 
+import "unicode/utf8"
+
 type keywordFilterMatcher struct {
 	nodes []keywordFilterACNode
 }
@@ -78,11 +80,10 @@ func (m *keywordFilterMatcher) build() {
 	}
 }
 
-func (m *keywordFilterMatcher) FindAll(text string) []keywordFilterACMatch {
-	if m == nil || len(m.nodes) == 0 || text == "" {
-		return nil
+func (m *keywordFilterMatcher) Scan(text string, fn func(keywordFilterACMatch) bool) {
+	if m == nil || len(m.nodes) == 0 || text == "" || fn == nil {
+		return
 	}
-	var matches []keywordFilterACMatch
 	state := 0
 	for idx, r := range text {
 		for state != 0 {
@@ -97,18 +98,19 @@ func (m *keywordFilterMatcher) FindAll(text string) []keywordFilterACMatch {
 		if len(m.nodes[state].Outputs) == 0 {
 			continue
 		}
-		end := idx + len(string(r))
+		end := idx + utf8.RuneLen(r)
 		best := ""
 		for _, pattern := range m.nodes[state].Outputs {
 			if best == "" || len(pattern) > len(best) {
 				best = pattern
 			}
 		}
-		matches = append(matches, keywordFilterACMatch{
+		if !fn(keywordFilterACMatch{
 			Pattern: best,
 			Start:   end - len(best),
 			End:     end,
-		})
+		}) {
+			return
+		}
 	}
-	return matches
 }

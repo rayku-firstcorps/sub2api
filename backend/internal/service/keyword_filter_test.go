@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,6 +186,62 @@ func TestKeywordFilterService_WhitelistTargetRuleIDs(t *testing.T) {
 	}
 }
 
+func TestKeywordFilterService_StreamScanContinuesAfterWhitelist(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	cfg := defaultKeywordFilterConfig()
+	cfg.KeywordRules = []KeywordFilterRule{
+		{ID: "drug", Pattern: "drug", MatchMode: KeywordFilterMatchModeToken, Enabled: true, Action: KeywordFilterActionBlock},
+		{ID: "sex", Pattern: "sex", MatchMode: KeywordFilterMatchModeToken, Enabled: true, Action: KeywordFilterActionBlock},
+		{ID: "kill", Pattern: "kill", MatchMode: KeywordFilterMatchModeToken, Enabled: true, Action: KeywordFilterActionBlock},
+	}
+	cfg.WhitelistRules = []KeywordFilterWhitelistRule{
+		{ID: "ok_drug", Pattern: "ok drug", MatchMode: KeywordFilterMatchModeExactPhrase, TargetRuleIDs: []string{"drug"}, Enabled: true},
+	}
+
+	match := svc.match(cfg, svc.normalizeText("ok drug sex kill"))
+	if match == nil {
+		t.Fatalf("expected later uncovered keyword to match")
+	}
+	if match.RuleID != "sex" {
+		t.Fatalf("rule id = %s, want sex: %#v", match.RuleID, match)
+	}
+}
+
+func TestKeywordFilterService_ValidateRegexRulesRejectsLiteralPatterns(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	cfg := defaultKeywordFilterConfig()
+	cfg.RegexRules = []KeywordFilterRegexRule{{Name: "literal", Pattern: "\u6d4b\u8bd5\u4e2d\u6587", Enabled: true}}
+
+	if err := svc.validateConfig(context.Background(), cfg); err == nil {
+		t.Fatalf("expected literal regex pattern to be rejected")
+	}
+
+	cfg.RegexRules = []KeywordFilterRegexRule{{Name: "anchored_literal", Pattern: `^drug$`, Enabled: true}}
+	if err := svc.validateConfig(context.Background(), cfg); err == nil {
+		t.Fatalf("expected anchored literal regex pattern to be rejected")
+	}
+
+	cfg.RegexRules = []KeywordFilterRegexRule{{Name: "digits", Pattern: `\d{11}`, Enabled: true}}
+	if err := svc.validateConfig(context.Background(), cfg); err != nil {
+		t.Fatalf("expected structured regex pattern to pass: %v", err)
+	}
+
+	cfg.RegexRules = []KeywordFilterRegexRule{{Name: "anchored_key", Pattern: `^sk-[A-Za-z0-9]+$`, Enabled: true}}
+	if err := svc.validateConfig(context.Background(), cfg); err != nil {
+		t.Fatalf("expected anchored structured regex pattern to pass: %v", err)
+	}
+}
+
+func TestKeywordFilterService_ValidateRegexRulesRejectsLongPatterns(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	cfg := defaultKeywordFilterConfig()
+	cfg.RegexRules = []KeywordFilterRegexRule{{Name: "long", Pattern: `\d` + strings.Repeat("a", maxKeywordFilterRegexPatternRunes), Enabled: true}}
+
+	if err := svc.validateConfig(context.Background(), cfg); err == nil {
+		t.Fatalf("expected long regex pattern to be rejected")
+	}
+}
+
 func TestExtractKeywordFilterSegments_OpenAIChatParts(t *testing.T) {
 	body := []byte(`{
 		"messages": [
@@ -294,6 +351,77 @@ func TestKeywordFilterService_CheckRespectsSwitches(t *testing.T) {
 	if len(logRepo.logs) != 1 {
 		t.Fatalf("expected one keyword filter log, got %d", len(logRepo.logs))
 	}
+}
+
+func TestKeywordFilterService_CheckUsesRuntimeCacheUntilConfigRefresh(t *testing.T) {
+	cfg := defaultKeywordFilterConfig()
+	cfg.Enabled = true
+	cfg.Keywords = []string{"bad"}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	repo := &keywordFilterSettingRepoStub{values: map[string]string{
+		SettingKeyKeywordFilterEnabled: "true",
+		SettingKeyKeywordFilterConfig:  string(raw),
+	}}
+	logRepo := &keywordFilterLogRepoStub{}
+	svc := NewKeywordFilterService(repo, logRepo, nil)
+	defer svc.Stop()
+
+	decision, err := svc.Check(context.Background(), KeywordFilterCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"bad"}]}`),
+	})
+	if err != nil {
+		t.Fatalf("Check error: %v", err)
+	}
+	if decision == nil || !decision.Blocked {
+		t.Fatalf("expected initial keyword block, got %#v", decision)
+	}
+
+	cfg.Keywords = []string{"evil"}
+	raw, err = json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal updated config: %v", err)
+	}
+	repo.values[SettingKeyKeywordFilterConfig] = string(raw)
+	decision, err = svc.Check(context.Background(), KeywordFilterCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"evil"}]}`),
+	})
+	if err != nil {
+		t.Fatalf("Check error: %v", err)
+	}
+	if decision == nil || !decision.Allowed || decision.Blocked {
+		t.Fatalf("expected cached rules to remain active before refresh, got %#v", decision)
+	}
+
+	keywords := []string{"evil"}
+	updated, err := svc.UpdateConfig(context.Background(), UpdateKeywordFilterConfigInput{Keywords: &keywords})
+	if err != nil {
+		t.Fatalf("UpdateConfig error: %v", err)
+	}
+	if updated == nil || len(updated.Keywords) != 1 || updated.Keywords[0] != "evil" {
+		t.Fatalf("unexpected updated config: %#v", updated)
+	}
+	decision, err = svc.Check(context.Background(), KeywordFilterCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"evil"}]}`),
+	})
+	if err != nil {
+		t.Fatalf("Check error: %v", err)
+	}
+	if decision == nil || !decision.Blocked {
+		t.Fatalf("expected refreshed keyword block, got %#v", decision)
+	}
+}
+
+func TestKeywordFilterService_StopIsIdempotent(t *testing.T) {
+	repo := &keywordFilterSettingRepoStub{values: map[string]string{}}
+	svc := NewKeywordFilterService(repo, &keywordFilterLogRepoStub{}, nil)
+	svc.Stop()
+	svc.Stop()
 }
 
 type keywordFilterSettingRepoStub struct {
