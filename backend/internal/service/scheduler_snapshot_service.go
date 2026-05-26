@@ -112,6 +112,12 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	if s.cache != nil {
 		cached, hit, err := s.cache.GetSnapshot(ctx, bucket)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				if ctxErr != nil {
+					return nil, useMixed, ctxErr
+				}
+				return nil, useMixed, err
+			}
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache read failed: bucket=%s err=%v", bucket.String(), err)
 		} else if hit {
 			return derefAccounts(cached), useMixed, nil
@@ -146,6 +152,12 @@ func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int
 	if s.cache != nil {
 		account, err := s.cache.GetAccount(ctx, accountID)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				if ctxErr != nil {
+					return nil, ctxErr
+				}
+				return nil, err
+			}
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] account cache read failed: id=%d err=%v", accountID, err)
 		} else if account != nil {
 			return account, nil
@@ -462,7 +474,7 @@ func (s *SchedulerSnapshotService) rebuildByAccount(ctx context.Context, account
 	}
 
 	var firstErr error
-	if err := s.rebuildBucketsForPlatform(ctx, account.Platform, groupIDs, reason, seen); err != nil && firstErr == nil {
+	if err := s.rebuildBucketsForPlatform(ctx, schedulerPlatformForAccount(account.Platform), groupIDs, reason, seen); err != nil && firstErr == nil {
 		firstErr = err
 	}
 	if account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
@@ -643,7 +655,7 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 	}
 
 	if useMixed {
-		platforms := []string{bucket.Platform, PlatformAntigravity}
+		platforms := schedulerPlatformsForBucket(bucket.Platform, true)
 		var accounts []Account
 		var err error
 		if groupID > 0 {
@@ -666,6 +678,17 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return filtered, nil
 	}
 
+	if bucket.Platform == PlatformAnthropic {
+		platforms := schedulerPlatformsForBucket(bucket.Platform, false)
+		if groupID > 0 {
+			return s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, groupID, platforms)
+		}
+		if s.isRunModeSimple() {
+			return s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
+		}
+		return s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, platforms)
+	}
+
 	if groupID > 0 {
 		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, groupID, bucket.Platform)
 	}
@@ -673,6 +696,24 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
 	}
 	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
+}
+
+func schedulerPlatformsForBucket(platform string, mixed bool) []string {
+	platforms := []string{platform}
+	if platform == PlatformAnthropic {
+		platforms = append(platforms, PlatformKiro)
+	}
+	if mixed {
+		platforms = append(platforms, PlatformAntigravity)
+	}
+	return platforms
+}
+
+func schedulerPlatformForAccount(platform string) string {
+	if platform == PlatformKiro {
+		return PlatformAnthropic
+	}
+	return platform
 }
 
 func (s *SchedulerSnapshotService) bucketFor(groupID *int64, platform string, mode string) SchedulerBucket {
@@ -729,6 +770,9 @@ func (s *SchedulerSnapshotService) resolveMode(platform string, hasForcePlatform
 }
 
 func (s *SchedulerSnapshotService) guardFallback(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if s.cfg == nil || s.cfg.Gateway.Scheduling.DbFallbackEnabled {
 		if s.fallbackLimit == nil || s.fallbackLimit.Allow() {
 			return nil

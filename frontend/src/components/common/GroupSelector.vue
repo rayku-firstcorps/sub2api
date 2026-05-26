@@ -61,14 +61,14 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { AdminGroup, GroupPlatform } from '@/types'
+import type { AccountPlatform, AdminGroup } from '@/types'
 
 const { t } = useI18n()
 
 interface Props {
   modelValue: number[]
   groups: AdminGroup[]
-  platform?: GroupPlatform // Optional platform filter
+  platform?: AccountPlatform // Optional platform filter
   mixedScheduling?: boolean // For antigravity accounts: allow anthropic/gemini groups
   searchable?: boolean | 'auto'
 }
@@ -87,18 +87,19 @@ const isSearchable = computed(() => {
   return props.searchable
 })
 
+const effectivePlatform = computed(() => props.platform === 'kiro' ? 'anthropic' : props.platform)
+
 // Filter groups by platform if specified
 const filteredGroups = computed(() => {
   let result: AdminGroup[] = props.groups
-  if (props.platform) {
-    // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
-    if (props.platform === 'antigravity' && props.mixedScheduling) {
+  if (effectivePlatform.value) {
+    // Antigravity mixed scheduling can use antigravity, anthropic, or gemini groups.
+    if (effectivePlatform.value === 'antigravity' && props.mixedScheduling) {
       result = result.filter(
         (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini'
       )
     } else {
-      // 默认：只能选择同 platform 的分组
-      result = result.filter((g) => g.platform === props.platform)
+      result = result.filter((g) => g.platform === effectivePlatform.value)
     }
   }
   if (isSearchable.value && searchText.value) {

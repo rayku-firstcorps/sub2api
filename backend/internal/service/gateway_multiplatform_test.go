@@ -1173,6 +1173,58 @@ func TestGatewayService_isModelSupportedByAccount(t *testing.T) {
 	}
 }
 
+func TestGatewayService_KiroAnthropicSchedulingCompatibility(t *testing.T) {
+	ctx := context.Background()
+	svc := &GatewayService{}
+
+	require.True(t, svc.isAccountAllowedForPlatform(&Account{Platform: PlatformKiro}, PlatformAnthropic, false))
+	require.True(t, svc.isAccountAllowedForPlatform(&Account{Platform: PlatformKiro}, PlatformAnthropic, true))
+	require.False(t, svc.isAccountAllowedForPlatform(&Account{Platform: PlatformKiro}, PlatformGemini, true))
+	require.True(t, svc.isAccountAllowedForPlatform(&Account{Platform: PlatformAntigravity, Extra: map[string]any{"mixed_scheduling": true}}, PlatformAnthropic, true))
+	require.False(t, svc.isAccountAllowedForPlatform(&Account{Platform: PlatformAntigravity}, PlatformAnthropic, true))
+
+	groupID := int64(42)
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformKiro, Priority: 1, Status: StatusActive, Schedulable: true, AccountGroups: []AccountGroup{{GroupID: groupID}}},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+	svc = &GatewayService{
+		accountRepo: repo,
+		cfg:         testConfig(),
+		groupRepo: &mockGroupRepoForGateway{
+			groups: map[int64]*Group{
+				groupID: {ID: groupID, Name: "kiro", Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true},
+			},
+		},
+	}
+
+	accounts, useMixed, err := svc.listSchedulableAccounts(ctx, &groupID, PlatformAnthropic, false)
+	require.NoError(t, err)
+	require.True(t, useMixed)
+	require.Len(t, accounts, 1)
+	require.Equal(t, PlatformKiro, accounts[0].Platform)
+
+	account, err := svc.selectAccountWithMixedScheduling(ctx, &groupID, "", "claude-opus-4-6", nil, PlatformAnthropic)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, PlatformKiro, account.Platform)
+
+	cfg := testConfig()
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc.cfg = cfg
+	svc.cache = &mockGatewayCacheForPlatform{}
+	result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "claude-opus-4-6", nil, "", int64(0))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Account)
+	require.Equal(t, PlatformKiro, result.Account.Platform)
+}
+
 // TestGatewayService_selectAccountWithMixedScheduling 测试混合调度
 func TestGatewayService_selectAccountWithMixedScheduling(t *testing.T) {
 	ctx := context.Background()

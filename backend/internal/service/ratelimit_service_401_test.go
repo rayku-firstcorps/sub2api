@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -17,10 +18,12 @@ type rateLimitAccountRepoStub struct {
 	mockAccountRepoForGemini
 	setErrorCalls          int
 	tempCalls              int
+	rateLimitCalls         int
 	updateCredentialsCalls int
 	lastCredentials        map[string]any
 	lastErrorMsg           string
 	lastTempReason         string
+	lastRateLimitResetAt   time.Time
 }
 
 func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, errorMsg string) error {
@@ -32,6 +35,12 @@ func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, error
 func (r *rateLimitAccountRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	r.tempCalls++
 	r.lastTempReason = reason
+	return nil
+}
+
+func (r *rateLimitAccountRepoStub) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
+	r.rateLimitCalls++
+	r.lastRateLimitResetAt = resetAt
 	return nil
 }
 
@@ -184,4 +193,23 @@ func TestRateLimitService_HandleUpstreamError_OAuth401UsesCredentialsUpdater(t *
 	require.True(t, shouldDisable)
 	require.Equal(t, 1, repo.updateCredentialsCalls)
 	require.NotEmpty(t, repo.lastCredentials["expires_at"])
+}
+
+func TestRateLimitService_HandleUpstreamError_Kiro402SetsMonthlyRateLimit(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       104,
+		Platform: PlatformKiro,
+		Type:     AccountTypeOAuth,
+	}
+	resetAt := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Second)
+	body := []byte(`{"nextDateReset":` + strconv.FormatInt(resetAt.Unix(), 10) + `}`)
+
+	shouldDisable := service.HandleUpstreamError(context.Background(), account, 402, http.Header{}, body)
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, 1, repo.rateLimitCalls)
+	require.WithinDuration(t, resetAt, repo.lastRateLimitResetAt, time.Second)
 }

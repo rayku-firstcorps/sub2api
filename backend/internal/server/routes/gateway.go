@@ -213,6 +213,24 @@ func RegisterGatewayRoutes(
 		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 	}
 
+	// Kiro 专用 Claude Messages 兼容入口。
+	// /claude-kiro-oauth/v1/messages 在客户端侧保持 Anthropic Messages API 形态，
+	// 服务端通过 ForcePlatform 直接绑定到 Kiro 凭据池。
+	kiroClaudeV1 := r.Group("/claude-kiro-oauth/v1")
+	kiroClaudeV1.Use(bodyLimit)
+	kiroClaudeV1.Use(clientRequestID)
+	kiroClaudeV1.Use(opsErrorLogger)
+	kiroClaudeV1.Use(endpointNorm)
+	kiroClaudeV1.Use(middleware.ForcePlatform(service.PlatformKiro))
+	kiroClaudeV1.Use(gin.HandlerFunc(apiKeyAuth))
+	kiroClaudeV1.Use(requireGroupAnthropic)
+	{
+		kiroClaudeV1.POST("/messages", h.Gateway.Messages)
+		kiroClaudeV1.POST("/messages/count_tokens", h.Gateway.CountTokens)
+		kiroClaudeV1.GET("/models", h.Gateway.Models)
+		kiroClaudeV1.GET("/usage", h.Gateway.Usage)
+	}
+
 }
 
 // getGroupPlatform extracts the group platform from the API Key stored in context.

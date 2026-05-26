@@ -395,6 +395,37 @@
       </div>
     </template>
 
+    <!-- Kiro OAuth accounts: sync usage windows from Kiro getUsageLimits -->
+    <template v-else-if="account.platform === 'kiro' && account.type === 'oauth'">
+      <div v-if="loading" class="space-y-1.5">
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="usageInfo?.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
+        {{ usageInfo.error }}
+      </div>
+      <div v-else-if="error" class="text-xs text-red-500">
+        {{ error }}
+      </div>
+      <div v-else-if="kiroUsageBars.length > 0" class="space-y-1">
+        <div v-for="bar in kiroUsageBars" :key="bar.key" class="space-y-0.5">
+          <UsageProgressBar
+            :label="bar.label"
+            :utilization="bar.utilization"
+            :resets-at="bar.resetsAt"
+            :color="bar.color"
+          />
+          <div class="max-w-[180px] truncate text-[9px] text-gray-400 dark:text-gray-500" :title="bar.title">
+            {{ bar.title }} {{ bar.usageText }}
+          </div>
+        </div>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
     <!-- Other accounts: no usage window -->
     <template v-else>
       <div class="text-xs text-gray-400">-</div>
@@ -538,6 +569,9 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth'
   }
   if (props.account.platform === 'openai') {
+    return props.account.type === 'oauth'
+  }
+  if (props.account.platform === 'kiro') {
     return props.account.type === 'oauth'
   }
   return false
@@ -895,6 +929,29 @@ const geminiUsageBars = computed(() => {
   return bars
 })
 
+const kiroUsageBars = computed(() => {
+  if (props.account.platform !== 'kiro' || !usageInfo.value?.kiro_breakdown) return []
+
+  return usageInfo.value.kiro_breakdown
+    .filter((item) => item.usage_limit > 0 || item.current_usage > 0)
+    .map((item, index) => {
+      const title = item.display_name || item.display_name_plural || item.resource_type || 'Kiro'
+      const unit = item.unit ? ` ${item.unit}` : ''
+      const usageText = item.usage_limit > 0
+        ? `${formatCompactNumber(item.current_usage)} / ${formatCompactNumber(item.usage_limit)}${unit}`
+        : `${formatCompactNumber(item.current_usage)}${unit}`
+      return {
+        key: `${item.resource_type || title}-${index}`,
+        label: item.resource_type === 'AGENTIC_REQUEST' ? 'req' : 'Kiro',
+        title,
+        usageText,
+        utilization: item.utilization,
+        resetsAt: item.resets_at ?? null,
+        color: (index % 3 === 0 ? 'indigo' : index % 3 === 1 ? 'emerald' : 'purple') as 'indigo' | 'emerald' | 'purple'
+      }
+    })
+})
+
 // 账户类型显示标签
 const antigravityTierLabel = computed(() => {
   switch (antigravityTier.value) {
@@ -1188,7 +1245,9 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
-  requestAutoLoad()
+  loadUsage({ bypassCache: true }).catch((e) => {
+    console.error('Failed to refresh OpenAI usage after account row update:', e)
+  })
 })
 
 watch(

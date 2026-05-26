@@ -11,9 +11,13 @@ import (
 type snapshotHydrationCache struct {
 	snapshot []*Account
 	accounts map[int64]*Account
+	err      error
 }
 
 func (c *snapshotHydrationCache) GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error) {
+	if c.err != nil {
+		return nil, false, c.err
+	}
 	return c.snapshot, true, nil
 }
 
@@ -22,10 +26,29 @@ func (c *snapshotHydrationCache) SetSnapshot(ctx context.Context, bucket Schedul
 }
 
 func (c *snapshotHydrationCache) GetAccount(ctx context.Context, accountID int64) (*Account, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
 	if c.accounts == nil {
 		return nil, nil
 	}
 	return c.accounts[accountID], nil
+}
+
+func TestSchedulerSnapshotListSchedulableAccountsReturnsCanceledWithoutFallback(t *testing.T) {
+	cache := &snapshotHydrationCache{err: context.Canceled}
+	schedulerSnapshot := NewSchedulerSnapshotService(cache, nil, nil, nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	accounts, _, err := schedulerSnapshot.ListSchedulableAccounts(ctx, nil, PlatformAnthropic, false)
+
+	if err != context.Canceled {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if accounts != nil {
+		t.Fatalf("expected no accounts, got %#v", accounts)
+	}
 }
 
 func (c *snapshotHydrationCache) SetAccount(ctx context.Context, account *Account) error {

@@ -22,6 +22,7 @@ const (
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
+	PlatformKiro        = "kiro"
 )
 
 // Account type constants
@@ -139,4 +140,18 @@ var DefaultBedrockModelMapping = map[string]string{
 	// Claude Haiku
 	"claude-haiku-4-5":          "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 	"claude-haiku-4-5-20251001": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+}
+
+// DefaultKiroModelMapping 是 Kiro 平台的默认模型映射
+// 将 Anthropic 标准模型名映射到 Kiro 内部模型 ID（点号格式）
+var DefaultKiroModelMapping = map[string]string{
+	"claude-haiku-4-5":           "claude-haiku-4.5",
+	"claude-haiku-4-5-20251001":  "claude-haiku-4.5",
+	"claude-sonnet-4-5":          "claude-sonnet-4.5",
+	"claude-sonnet-4-5-20250929": "claude-sonnet-4.5",
+	"claude-sonnet-4-6":          "claude-sonnet-4.6",
+	"claude-opus-4-5":            "claude-opus-4.5",
+	"claude-opus-4-5-20251101":   "claude-opus-4.5",
+	"claude-opus-4-6":            "claude-opus-4.6",
+	"claude-opus-4-7":            "claude-opus-4.7",
 }

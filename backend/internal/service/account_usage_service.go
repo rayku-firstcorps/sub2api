@@ -5,20 +5,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	httppool "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	openaipkg "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 )
@@ -103,6 +107,13 @@ type antigravityUsageCache struct {
 	timestamp time.Time
 }
 
+// kiroUsageCache caches Kiro usage-limit responses.
+type kiroUsageCache struct {
+	usageInfo *UsageInfo
+	err       error
+	timestamp time.Time
+}
+
 const (
 	apiCacheTTL             = 3 * time.Minute
 	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
@@ -118,8 +129,10 @@ type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
 	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
+	kiroCache         sync.Map           // accountID -> *kiroUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
+	kiroFlight        singleflight.Group // 防止同一 Kiro 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 }
 
@@ -176,6 +189,24 @@ type AICredit struct {
 	MinimumBalance float64 `json:"minimum_balance,omitempty"`
 }
 
+// KiroUsageBreakdown represents a single Kiro usage-limit bucket.
+type KiroUsageBreakdown struct {
+	ResourceType      string     `json:"resource_type,omitempty"`
+	DisplayName       string     `json:"display_name,omitempty"`
+	DisplayNamePlural string     `json:"display_name_plural,omitempty"`
+	Unit              string     `json:"unit,omitempty"`
+	Currency          string     `json:"currency,omitempty"`
+	CurrentUsage      float64    `json:"current_usage"`
+	UsageLimit        float64    `json:"usage_limit"`
+	Utilization       float64    `json:"utilization"`
+	CurrentOverages   float64    `json:"current_overages,omitempty"`
+	OverageCap        float64    `json:"overage_cap,omitempty"`
+	OverageRate       float64    `json:"overage_rate,omitempty"`
+	OverageCharges    float64    `json:"overage_charges,omitempty"`
+	ResetsAt          *time.Time `json:"resets_at,omitempty"`
+	RemainingSeconds  int        `json:"remaining_seconds,omitempty"`
+}
+
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
 	Source             string         `json:"source,omitempty"`               // "passive" or "active"
@@ -202,6 +233,9 @@ type UsageInfo struct {
 
 	// Antigravity AI Credits 余额
 	AICredits []AICredit `json:"ai_credits,omitempty"`
+
+	// Kiro usage-limit buckets returned by getUsageLimits.
+	KiroBreakdown []KiroUsageBreakdown `json:"kiro_breakdown,omitempty"`
 
 	// Antigravity 废弃模型转发规则 (old_model_id -> new_model_id)
 	ModelForwardingRules map[string]string `json:"model_forwarding_rules,omitempty"`
@@ -263,6 +297,7 @@ type AccountUsageService struct {
 	usageFetcher            ClaudeUsageFetcher
 	geminiQuotaService      *GeminiQuotaService
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
+	kiroTokenProvider       *KiroTokenProvider
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
@@ -289,6 +324,31 @@ func NewAccountUsageService(
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
 	}
+}
+
+func NewAccountUsageServiceWithKiro(
+	accountRepo AccountRepository,
+	usageLogRepo UsageLogRepository,
+	usageFetcher ClaudeUsageFetcher,
+	geminiQuotaService *GeminiQuotaService,
+	antigravityQuotaFetcher *AntigravityQuotaFetcher,
+	kiroTokenProvider *KiroTokenProvider,
+	cache *UsageCache,
+	identityCache IdentityCache,
+	tlsFPProfileService *TLSFingerprintProfileService,
+) *AccountUsageService {
+	svc := NewAccountUsageService(
+		accountRepo,
+		usageLogRepo,
+		usageFetcher,
+		geminiQuotaService,
+		antigravityQuotaFetcher,
+		cache,
+		identityCache,
+		tlsFPProfileService,
+	)
+	svc.kiroTokenProvider = kiroTokenProvider
+	return svc
 }
 
 // GetUsage 获取账号使用量
@@ -320,6 +380,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 	// Antigravity 平台：使用 AntigravityQuotaFetcher 获取额度
 	if account.Platform == PlatformAntigravity {
 		usage, err := s.getAntigravityUsage(ctx, account)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	if account.Platform == PlatformKiro {
+		usage, err := s.getKiroUsage(ctx, account)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -490,6 +558,295 @@ func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID
 			slog.Warn("sync_active_to_passive_failed", "account_id", accountID, "error", err)
 		}
 	}
+}
+
+type kiroUsageResponse struct {
+	DaysUntilReset     int                  `json:"daysUntilReset"`
+	NextDateReset      float64              `json:"nextDateReset"`
+	SubscriptionInfo   map[string]any       `json:"subscriptionInfo"`
+	UserInfo           map[string]any       `json:"userInfo"`
+	UsageBreakdownList []kiroUsageRawBucket `json:"usageBreakdownList"`
+}
+
+type kiroUsageRawBucket struct {
+	ResourceType                 string  `json:"resourceType"`
+	DisplayName                  string  `json:"displayName"`
+	DisplayNamePlural            string  `json:"displayNamePlural"`
+	Unit                         string  `json:"unit"`
+	Currency                     string  `json:"currency"`
+	CurrentUsage                 float64 `json:"currentUsage"`
+	CurrentUsageWithPrecision    float64 `json:"currentUsageWithPrecision"`
+	UsageLimit                   float64 `json:"usageLimit"`
+	UsageLimitWithPrecision      float64 `json:"usageLimitWithPrecision"`
+	CurrentOverages              float64 `json:"currentOverages"`
+	CurrentOveragesWithPrecision float64 `json:"currentOveragesWithPrecision"`
+	OverageCap                   float64 `json:"overageCap"`
+	OverageCapWithPrecision      float64 `json:"overageCapWithPrecision"`
+	OverageRate                  float64 `json:"overageRate"`
+	OverageCharges               float64 `json:"overageCharges"`
+	NextDateReset                float64 `json:"nextDateReset"`
+}
+
+func (s *AccountUsageService) getKiroUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	now := time.Now()
+	if account == nil || account.Platform != PlatformKiro || account.Type != AccountTypeOAuth {
+		return &UsageInfo{UpdatedAt: &now}, nil
+	}
+	if s.kiroTokenProvider == nil {
+		return &UsageInfo{UpdatedAt: &now, Error: "kiro token provider unavailable"}, nil
+	}
+	if s.cache == nil {
+		return s.fetchKiroUsageInfo(ctx, account)
+	}
+
+	if cached, ok := s.cache.kiroCache.Load(account.ID); ok {
+		if cache, ok := cached.(*kiroUsageCache); ok {
+			age := time.Since(cache.timestamp)
+			if cache.err != nil && age < apiErrorCacheTTL {
+				return &UsageInfo{UpdatedAt: &now, Error: cache.err.Error(), ErrorCode: errorCodeNetworkError}, nil
+			}
+			if cache.usageInfo != nil && age < apiCacheTTL {
+				recalcKiroRemainingSeconds(cache.usageInfo)
+				return cache.usageInfo, nil
+			}
+		}
+	}
+
+	flightKey := fmt.Sprintf("kiro-usage:%d", account.ID)
+	result, flightErr, _ := s.cache.kiroFlight.Do(flightKey, func() (any, error) {
+		if cached, ok := s.cache.kiroCache.Load(account.ID); ok {
+			if cache, ok := cached.(*kiroUsageCache); ok {
+				age := time.Since(cache.timestamp)
+				if cache.err != nil && age < apiErrorCacheTTL {
+					return &UsageInfo{UpdatedAt: &now, Error: cache.err.Error(), ErrorCode: errorCodeNetworkError}, nil
+				}
+				if cache.usageInfo != nil && age < apiCacheTTL {
+					recalcKiroRemainingSeconds(cache.usageInfo)
+					return cache.usageInfo, nil
+				}
+			}
+		}
+
+		fetchCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		usage, err := s.fetchKiroUsageInfo(fetchCtx, account)
+		if err != nil {
+			degraded := buildKiroDegradedUsage(err)
+			s.cache.kiroCache.Store(account.ID, &kiroUsageCache{
+				err:       err,
+				usageInfo: degraded,
+				timestamp: time.Now(),
+			})
+			return degraded, nil
+		}
+		s.cache.kiroCache.Store(account.ID, &kiroUsageCache{
+			usageInfo: usage,
+			timestamp: time.Now(),
+		})
+		return usage, nil
+	})
+	if flightErr != nil {
+		return nil, flightErr
+	}
+	usage, ok := result.(*UsageInfo)
+	if !ok || usage == nil {
+		return &UsageInfo{UpdatedAt: &now}, nil
+	}
+	return usage, nil
+}
+
+func (s *AccountUsageService) fetchKiroUsageInfo(ctx context.Context, account *Account) (*UsageInfo, error) {
+	proxyURL, err := kiroAccountProxyURLForOperation(account, "usage_limits")
+	if err != nil {
+		return nil, fmt.Errorf("resolve kiro proxy: %w", err)
+	}
+
+	accessToken, err := s.kiroTokenProvider.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("get kiro access token: %w", err)
+	}
+
+	region := account.GetCredential("region")
+	if region == "" {
+		region = kiro.DefaultRegion
+	}
+	endpoint, err := url.Parse(kiro.GetUsageLimitsURL(region))
+	if err != nil {
+		return nil, fmt.Errorf("parse kiro usage url: %w", err)
+	}
+	q := endpoint.Query()
+	q.Set("isEmailRequired", "true")
+	q.Set("origin", kiro.OriginAIEditor)
+	q.Set("resourceType", "AGENTIC_REQUEST")
+	if account.GetCredential("auth_method") == kiro.AuthMethodSocial {
+		if profileArn := strings.TrimSpace(account.GetCredential("profile_arn")); profileArn != "" {
+			q.Set("profileArn", profileArn)
+		}
+	}
+	endpoint.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create kiro usage request: %w", err)
+	}
+	setKiroUsageHeaders(req, accessToken)
+
+	client, err := httppool.GetClient(httppool.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               20 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build kiro usage client: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("kiro usage request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("kiro usage API returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var raw kiroUsageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("decode kiro usage response: %w", err)
+	}
+	return buildKiroUsageInfo(&raw, time.Now()), nil
+}
+
+func setKiroUsageHeaders(req *http.Request, accessToken string) {
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("x-amz-user-agent", fmt.Sprintf("aws-sdk-js/%s KiroIDE-%s", kiro.APIVersion, kiro.KiroVersion))
+	req.Header.Set("User-Agent", fmt.Sprintf("aws-sdk-js/%s ua/2.1 os/linux lang/js api/%s#%s m/E KiroIDE-%s", kiro.APIVersion, kiro.APIName, kiro.APIVersion, kiro.KiroVersion))
+	req.Header.Set("amz-sdk-invocation-id", uuid.NewString())
+	req.Header.Set("amz-sdk-request", "attempt=1; max=1")
+	req.Header.Set("Connection", "close")
+}
+
+func buildKiroUsageInfo(raw *kiroUsageResponse, now time.Time) *UsageInfo {
+	usage := &UsageInfo{
+		UpdatedAt:     &now,
+		KiroBreakdown: []KiroUsageBreakdown{},
+	}
+	if raw == nil {
+		return usage
+	}
+
+	topReset := unixTimestampPtr(raw.NextDateReset)
+	for _, b := range raw.UsageBreakdownList {
+		currentUsage := firstNonZero(b.CurrentUsageWithPrecision, b.CurrentUsage)
+		usageLimit := firstNonZero(b.UsageLimitWithPrecision, b.UsageLimit)
+		currentOverages := firstNonZero(b.CurrentOveragesWithPrecision, b.CurrentOverages)
+		overageCap := firstNonZero(b.OverageCapWithPrecision, b.OverageCap)
+
+		resetAt := unixTimestampPtr(b.NextDateReset)
+		if resetAt == nil {
+			resetAt = topReset
+		}
+		remaining := 0
+		if resetAt != nil {
+			remaining = int(resetAt.Sub(now).Seconds())
+			if remaining < 0 {
+				remaining = 0
+			}
+		}
+
+		utilization := 0.0
+		if usageLimit > 0 {
+			utilization = currentUsage / usageLimit * 100
+		}
+
+		item := KiroUsageBreakdown{
+			ResourceType:      b.ResourceType,
+			DisplayName:       b.DisplayName,
+			DisplayNamePlural: b.DisplayNamePlural,
+			Unit:              b.Unit,
+			Currency:          b.Currency,
+			CurrentUsage:      currentUsage,
+			UsageLimit:        usageLimit,
+			Utilization:       utilization,
+			CurrentOverages:   currentOverages,
+			OverageCap:        overageCap,
+			OverageRate:       b.OverageRate,
+			OverageCharges:    b.OverageCharges,
+			ResetsAt:          resetAt,
+			RemainingSeconds:  remaining,
+		}
+		usage.KiroBreakdown = append(usage.KiroBreakdown, item)
+		if strings.EqualFold(item.ResourceType, "AGENTIC_REQUEST") {
+			usage.FiveHour = &UsageProgress{
+				Utilization:      item.Utilization,
+				ResetsAt:         item.ResetsAt,
+				RemainingSeconds: item.RemainingSeconds,
+				UsedRequests:     int64(item.CurrentUsage),
+				LimitRequests:    int64(item.UsageLimit),
+			}
+		}
+	}
+	return usage
+}
+
+func buildKiroDegradedUsage(err error) *UsageInfo {
+	now := time.Now()
+	info := &UsageInfo{
+		UpdatedAt: &now,
+		Error:     fmt.Sprintf("usage API error: %v", err),
+		ErrorCode: errorCodeNetworkError,
+	}
+	errStr := err.Error()
+	switch {
+	case strings.Contains(errStr, "HTTP 401") || strings.Contains(errStr, "Unauthorized") || strings.Contains(errStr, "access token"):
+		info.ErrorCode = errorCodeUnauthenticated
+		info.NeedsReauth = true
+	case strings.Contains(errStr, "HTTP 403") || strings.Contains(errStr, "Forbidden"):
+		info.ErrorCode = errorCodeForbidden
+		info.IsForbidden = true
+	case strings.Contains(errStr, "HTTP 429"):
+		info.ErrorCode = errorCodeRateLimited
+	}
+	return info
+}
+
+func recalcKiroRemainingSeconds(info *UsageInfo) {
+	if info == nil {
+		return
+	}
+	for i := range info.KiroBreakdown {
+		resetAt := info.KiroBreakdown[i].ResetsAt
+		if resetAt == nil {
+			continue
+		}
+		remaining := int(time.Until(*resetAt).Seconds())
+		if remaining < 0 {
+			remaining = 0
+		}
+		info.KiroBreakdown[i].RemainingSeconds = remaining
+	}
+}
+
+func unixTimestampPtr(value float64) *time.Time {
+	if value <= 0 {
+		return nil
+	}
+	seconds := int64(value)
+	nanos := int64(0)
+	if value >= 1e12 {
+		seconds = int64(value / 1000)
+		nanos = int64(value) % 1000 * int64(time.Millisecond)
+	}
+	t := time.Unix(seconds, nanos).UTC()
+	return &t
+}
+
+func firstNonZero(primary, fallback float64) float64 {
+	if primary != 0 {
+		return primary
+	}
+	return fallback
 }
 
 func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Account) (*UsageInfo, error) {

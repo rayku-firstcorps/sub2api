@@ -667,7 +667,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'kiro'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -910,6 +910,23 @@ export interface AntigravityModelQuota {
   reset_time: string  // 重置时间 ISO8601
 }
 
+export interface KiroUsageBreakdown {
+  resource_type?: string
+  display_name?: string
+  display_name_plural?: string
+  unit?: string
+  currency?: string
+  current_usage: number
+  usage_limit: number
+  utilization: number
+  current_overages?: number
+  overage_cap?: number
+  overage_rate?: number
+  overage_charges?: number
+  resets_at?: string | null
+  remaining_seconds?: number
+}
+
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
@@ -923,6 +940,7 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
+  kiro_breakdown?: KiroUsageBreakdown[] | null
   ai_credits?: Array<{
     credit_type?: string
     amount?: number
@@ -1149,6 +1167,25 @@ export interface CodexSessionImportResult {
   items?: CodexSessionImportItem[]
   warnings?: CodexSessionImportMessage[]
   errors?: CodexSessionImportMessage[]
+}
+
+export interface KiroImportRequest {
+  content?: string
+  contents?: string[]
+  name?: string
+  notes?: string | null
+  auth_method?: 'social' | 'builder_id'
+  region?: string
+  client_id?: string
+  client_secret?: string
+  proxy_id?: number | null
+  concurrency?: number
+  priority?: number
+  rate_multiplier?: number
+  load_factor?: number | null
+  group_ids?: number[]
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
 }
 
 // ==================== Usage & Redeem Types ====================

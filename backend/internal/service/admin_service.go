@@ -2352,10 +2352,11 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
 	// 绑定分组
 	groupIDs := input.GroupIDs
+	groupPlatform := accountGroupPlatform(input.Platform)
 	// 如果没有指定分组,自动绑定对应平台的默认分组
 	if len(groupIDs) == 0 && !input.SkipDefaultGroupBind {
-		defaultGroupName := input.Platform + "-default"
-		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
+		defaultGroupName := groupPlatform + "-default"
+		groups, err := s.groupRepo.ListActiveByPlatform(ctx, groupPlatform)
 		if err == nil {
 			for _, g := range groups {
 				if g.Name == defaultGroupName {
@@ -2368,7 +2369,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 
 	// 检查混合渠道风险（除非用户已确认）
 	if len(groupIDs) > 0 && !input.SkipMixedChannelCheck {
-		if err := s.checkMixedChannelRisk(ctx, 0, input.Platform, groupIDs); err != nil {
+		if err := s.checkMixedChannelRisk(ctx, 0, groupPlatform, groupIDs); err != nil {
 			return nil, err
 		}
 	}
@@ -3529,7 +3530,7 @@ func getAccountPlatform(accountPlatform string) string {
 	switch strings.ToLower(strings.TrimSpace(accountPlatform)) {
 	case PlatformAntigravity:
 		return "Antigravity"
-	case PlatformAnthropic, "claude":
+	case PlatformAnthropic, PlatformKiro, "claude":
 		return "Anthropic"
 	default:
 		return ""
@@ -3547,6 +3548,13 @@ type MixedChannelError struct {
 func (e *MixedChannelError) Error() string {
 	return fmt.Sprintf("mixed_channel_warning: Group '%s' contains both %s and %s accounts. Using mixed channels in the same context may cause thinking block signature validation issues, which will fallback to non-thinking mode for historical messages.",
 		e.GroupName, e.CurrentPlatform, e.OtherPlatform)
+}
+
+func accountGroupPlatform(accountPlatform string) string {
+	if strings.EqualFold(strings.TrimSpace(accountPlatform), PlatformKiro) {
+		return PlatformAnthropic
+	}
+	return accountPlatform
 }
 
 func (s *adminServiceImpl) ResetAccountQuota(ctx context.Context, id int64) error {

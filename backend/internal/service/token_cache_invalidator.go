@@ -46,6 +46,17 @@ func (c *CompositeTokenCacheInvalidator) InvalidateToken(ctx context.Context, ac
 		keysToDelete = append(keysToDelete, OpenAITokenCacheKey(account))
 	case PlatformAnthropic:
 		keysToDelete = append(keysToDelete, ClaudeTokenCacheKey(account))
+	case PlatformKiro:
+		keysToDelete = append(keysToDelete, KiroTokenCacheKey(account))
+		if profileARN := account.GetCredential("profile_arn"); profileARN != "" {
+			keysToDelete = append(keysToDelete, "kiro:account:"+profileARN)
+		}
+		if fingerprint := kiroTokenProxyFingerprint(account); fingerprint != "" {
+			keysToDelete = append(keysToDelete, kiroTokenCacheKey(account, fingerprint))
+		}
+		if currentFingerprint, err := kiroProxyFingerprint(account); err == nil && currentFingerprint != "" {
+			keysToDelete = append(keysToDelete, kiroTokenCacheKey(account, currentFingerprint))
+		}
 	default:
 		return nil
 	}

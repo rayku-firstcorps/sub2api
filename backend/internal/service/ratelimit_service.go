@@ -243,6 +243,16 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			shouldDisable = true
 		}
 	case 402:
+		if account.Platform == PlatformKiro {
+			resetAt := kiroQuotaResetTime(time.Now(), responseBody)
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
+				slog.Warn("kiro_quota_rate_limit_set_failed", "account_id", account.ID, "error", err)
+			} else {
+				slog.Info("kiro_quota_exhausted", "account_id", account.ID, "reset_at", resetAt)
+			}
+			shouldDisable = true
+			break
+		}
 		// OpenAI: deactivated_workspace 表示工作区已停用，直接标记 error
 		if account.Platform == PlatformOpenAI && gjson.GetBytes(responseBody, "detail.code").String() == "deactivated_workspace" {
 			msg := "Workspace deactivated (402): workspace has been deactivated"
@@ -1246,6 +1256,73 @@ func persistOpenAI429PlanType(ctx context.Context, repo AccountRepository, accou
 	}
 	account.Credentials["plan_type"] = planType
 	slog.Info("openai_429_plan_type_synced", "account_id", account.ID, "previous_plan_type", current, "plan_type", planType)
+}
+
+func kiroQuotaResetTime(now time.Time, body []byte) time.Time {
+	if resetAt := parseKiroQuotaResetTime(body); resetAt != nil && resetAt.After(now) {
+		return *resetAt
+	}
+	return time.Date(now.UTC().Year(), now.UTC().Month()+1, 1, 0, 0, 0, 0, time.UTC)
+}
+
+func parseKiroQuotaResetTime(body []byte) *time.Time {
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil
+	}
+	paths := []string{
+		"nextDateReset",
+		"resetAt",
+		"resetsAt",
+		"reset_at",
+		"error.nextDateReset",
+		"error.resetAt",
+		"error.resetsAt",
+		"error.reset_at",
+	}
+	for _, path := range paths {
+		result := gjson.GetBytes(body, path)
+		if !result.Exists() {
+			continue
+		}
+		if t, ok := parseKiroResetValue(result); ok {
+			return &t
+		}
+	}
+	if buckets := gjson.GetBytes(body, "usageBreakdownList").Array(); len(buckets) > 0 {
+		var latest *time.Time
+		for _, bucket := range buckets {
+			if t, ok := parseKiroResetValue(bucket.Get("nextDateReset")); ok {
+				if latest == nil || t.After(*latest) {
+					latest = &t
+				}
+			}
+		}
+		return latest
+	}
+	return nil
+}
+
+func parseKiroResetValue(value gjson.Result) (time.Time, bool) {
+	switch value.Type {
+	case gjson.Number:
+		if t := unixTimestampPtr(value.Float()); t != nil {
+			return *t, true
+		}
+	case gjson.String:
+		raw := strings.TrimSpace(value.String())
+		if raw == "" {
+			return time.Time{}, false
+		}
+		if ts, err := strconv.ParseFloat(raw, 64); err == nil {
+			if t := unixTimestampPtr(ts); t != nil {
+				return *t, true
+			}
+		}
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // handle529 处理529过载错误

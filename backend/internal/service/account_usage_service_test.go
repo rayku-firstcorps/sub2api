@@ -157,6 +157,89 @@ func TestAccountUsageService_GetOpenAIUsage_DoesNotPromoteCodexExtraToRateLimit(
 	}
 }
 
+func TestBuildKiroUsageInfo(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC)
+	resetAt := now.Add(2 * time.Hour)
+	usage := buildKiroUsageInfo(&kiroUsageResponse{
+		NextDateReset: float64(resetAt.Unix()),
+		UsageBreakdownList: []kiroUsageRawBucket{
+			{
+				ResourceType:              "AGENTIC_REQUEST",
+				DisplayName:               "Agentic request",
+				Unit:                      "requests",
+				CurrentUsage:              25,
+				CurrentUsageWithPrecision: 25.5,
+				UsageLimit:                100,
+			},
+		},
+	}, now)
+
+	if usage == nil {
+		t.Fatal("expected usage info")
+	}
+	if len(usage.KiroBreakdown) != 1 {
+		t.Fatalf("expected one kiro breakdown item, got %d", len(usage.KiroBreakdown))
+	}
+	item := usage.KiroBreakdown[0]
+	if item.ResourceType != "AGENTIC_REQUEST" {
+		t.Fatalf("ResourceType = %q, want AGENTIC_REQUEST", item.ResourceType)
+	}
+	if item.CurrentUsage != 25.5 {
+		t.Fatalf("CurrentUsage = %v, want 25.5", item.CurrentUsage)
+	}
+	if item.UsageLimit != 100 {
+		t.Fatalf("UsageLimit = %v, want 100", item.UsageLimit)
+	}
+	if item.Utilization != 25.5 {
+		t.Fatalf("Utilization = %v, want 25.5", item.Utilization)
+	}
+	if item.ResetsAt == nil || !item.ResetsAt.Equal(resetAt) {
+		t.Fatalf("ResetsAt = %v, want %v", item.ResetsAt, resetAt)
+	}
+	if item.RemainingSeconds != 7200 {
+		t.Fatalf("RemainingSeconds = %d, want 7200", item.RemainingSeconds)
+	}
+	if usage.FiveHour == nil {
+		t.Fatal("expected Kiro AGENTIC_REQUEST to populate five_hour compatibility progress")
+	}
+	if usage.FiveHour.Utilization != 25.5 {
+		t.Fatalf("FiveHour.Utilization = %v, want 25.5", usage.FiveHour.Utilization)
+	}
+	if usage.FiveHour.UsedRequests != 25 || usage.FiveHour.LimitRequests != 100 {
+		t.Fatalf("FiveHour requests = %d/%d, want 25/100", usage.FiveHour.UsedRequests, usage.FiveHour.LimitRequests)
+	}
+}
+
+func TestBuildKiroUsageInfoAcceptsMillisecondResetTimestamp(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC)
+	resetAt := now.Add(2*time.Hour + 345*time.Millisecond)
+	usage := buildKiroUsageInfo(&kiroUsageResponse{
+		NextDateReset: float64(resetAt.UnixMilli()),
+		UsageBreakdownList: []kiroUsageRawBucket{
+			{
+				ResourceType: "AGENTIC_REQUEST",
+				CurrentUsage: 10,
+				UsageLimit:   100,
+			},
+		},
+	}, now)
+
+	if usage == nil || len(usage.KiroBreakdown) != 1 {
+		t.Fatalf("expected one kiro breakdown item, got %#v", usage)
+	}
+	item := usage.KiroBreakdown[0]
+	if item.ResetsAt == nil || !item.ResetsAt.Equal(resetAt) {
+		t.Fatalf("ResetsAt = %v, want %v", item.ResetsAt, resetAt)
+	}
+	if item.RemainingSeconds != 7200 {
+		t.Fatalf("RemainingSeconds = %d, want 7200", item.RemainingSeconds)
+	}
+}
+
 func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)

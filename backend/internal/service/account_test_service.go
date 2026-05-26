@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -67,6 +68,7 @@ type AccountTestService struct {
 	geminiTokenProvider       *GeminiTokenProvider
 	claudeTokenProvider       *ClaudeTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
+	kiroTokenProvider         *KiroTokenProvider
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	tlsFPProfileService       *TLSFingerprintProfileService
@@ -78,6 +80,7 @@ func NewAccountTestService(
 	geminiTokenProvider *GeminiTokenProvider,
 	claudeTokenProvider *ClaudeTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
+	kiroTokenProvider *KiroTokenProvider,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -87,6 +90,7 @@ func NewAccountTestService(
 		geminiTokenProvider:       geminiTokenProvider,
 		claudeTokenProvider:       claudeTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
+		kiroTokenProvider:         kiroTokenProvider,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
 		tlsFPProfileService:       tlsFPProfileService,
@@ -190,6 +194,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	if account.Platform == PlatformAntigravity {
 		return s.routeAntigravityTest(c, account, modelID, prompt)
+	}
+
+	if account.Platform == PlatformKiro {
+		return s.testKiroAccountConnection(c, account, modelID)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
@@ -386,6 +394,120 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	}
 
 	return s.processClaudeStream(c, resp.Body)
+}
+
+func (s *AccountTestService) testKiroAccountConnection(c *gin.Context, account *Account, modelID string) error {
+	ctx := c.Request.Context()
+
+	testModelID := modelID
+	if testModelID == "" {
+		testModelID = claude.DefaultTestModel
+	}
+	kiroModel := mapKiroModel(account, testModelID)
+	if kiroModel == "" {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported Kiro model: %s", testModelID))
+	}
+	if s.kiroTokenProvider == nil {
+		return s.sendErrorAndEnd(c, "Kiro token provider not configured")
+	}
+	proxyURL, err := kiroAccountProxyURLForOperation(account, "account_test_generate")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to resolve Kiro proxy: %s", err.Error()))
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	payload, err := createTestPayload(testModelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create test payload")
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	kiroReq, err := kiro.ConvertRequest(payloadBytes, kiroModel, account.GetCredential("profile_arn"))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to create Kiro request: %s", err.Error()))
+	}
+	reqBody, err := json.Marshal(kiroReq)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to marshal Kiro request")
+	}
+
+	accessToken, err := s.kiroTokenProvider.GetAccessToken(ctx, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get Kiro access token: %s", err.Error()))
+	}
+
+	region := account.GetCredential("region")
+	if region == "" {
+		region = kiro.DefaultRegion
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, kiro.GetGenerateURL(region), bytes.NewReader(reqBody))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Kiro request")
+	}
+	setKiroRequestHeaders(req, accessToken)
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Kiro request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Kiro API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	return s.processKiroStream(c, resp.Body)
+}
+
+func (s *AccountTestService) processKiroStream(c *gin.Context, body io.Reader) error {
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	parser := kiro.NewStreamParser()
+	sawContent := false
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		for _, evt := range parser.Feed(line) {
+			if evt.Error != "" || evt.ErrorCode != "" {
+				msg := evt.Error
+				if msg == "" {
+					msg = evt.ErrorMessage
+				}
+				if msg == "" {
+					msg = evt.ErrorCode
+				}
+				return s.sendErrorAndEnd(c, msg)
+			}
+			if evt.Content != "" {
+				sawContent = true
+				s.sendEvent(c, TestEvent{Type: "content", Text: evt.Content})
+			}
+			if evt.Stop != nil && *evt.Stop {
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+				return nil
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Kiro stream read error: %s", err.Error()))
+	}
+	if sawContent {
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+		return nil
+	}
+	return s.sendErrorAndEnd(c, "Kiro stream ended without content")
 }
 
 // testBedrockAccountConnection tests a Bedrock (SigV4 or API Key) account using non-streaming invoke
