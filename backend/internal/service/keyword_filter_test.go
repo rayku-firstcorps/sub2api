@@ -469,6 +469,122 @@ func TestKeywordFilterService_StopIsIdempotent(t *testing.T) {
 	svc.Stop()
 }
 
+func TestKeywordFilterService_LenientModeOnlyScansLastUserMessage(t *testing.T) {
+	cfg := defaultKeywordFilterConfig()
+	cfg.Enabled = true
+	cfg.FilterMode = KeywordFilterModeLenient
+	cfg.Keywords = []string{"bad"}
+	raw, _ := json.Marshal(cfg)
+
+	repo := &keywordFilterSettingRepoStub{values: map[string]string{
+		SettingKeyKeywordFilterEnabled: "true",
+		SettingKeyKeywordFilterConfig:  string(raw),
+	}}
+	logRepo := &keywordFilterLogRepoStub{}
+	svc := NewKeywordFilterService(repo, logRepo, nil)
+
+	// History message contains "bad" but last message is clean → should be allowed
+	decision, err := svc.Check(context.Background(), KeywordFilterCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"bad"},{"role":"assistant","content":"ok"},{"role":"user","content":"hello"}]}`),
+	})
+	if err != nil {
+		t.Fatalf("Check error: %v", err)
+	}
+	if decision == nil || !decision.Allowed || decision.Blocked {
+		t.Fatalf("expected allowed in lenient mode when only history matches: %#v", decision)
+	}
+
+	// Last user message contains "bad" → should be blocked
+	decision, err = svc.Check(context.Background(), KeywordFilterCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"ok"},{"role":"user","content":"bad"}]}`),
+	})
+	if err != nil {
+		t.Fatalf("Check error: %v", err)
+	}
+	if decision == nil || decision.Allowed || !decision.Blocked {
+		t.Fatalf("expected blocked in lenient mode when last message matches: %#v", decision)
+	}
+}
+
+func TestKeywordFilterService_StrictModeScansAllMessages(t *testing.T) {
+	cfg := defaultKeywordFilterConfig()
+	cfg.Enabled = true
+	cfg.FilterMode = KeywordFilterModeStrict
+	cfg.Keywords = []string{"bad"}
+	raw, _ := json.Marshal(cfg)
+
+	repo := &keywordFilterSettingRepoStub{values: map[string]string{
+		SettingKeyKeywordFilterEnabled: "true",
+		SettingKeyKeywordFilterConfig:  string(raw),
+	}}
+	logRepo := &keywordFilterLogRepoStub{}
+	svc := NewKeywordFilterService(repo, logRepo, nil)
+
+	// History message contains "bad" → should be blocked in strict mode
+	decision, err := svc.Check(context.Background(), KeywordFilterCheckInput{
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"bad"},{"role":"assistant","content":"ok"},{"role":"user","content":"hello"}]}`),
+	})
+	if err != nil {
+		t.Fatalf("Check error: %v", err)
+	}
+	if decision == nil || decision.Allowed || !decision.Blocked {
+		t.Fatalf("expected blocked in strict mode when history matches: %#v", decision)
+	}
+}
+
+func TestExtractKeywordFilterLastUserSegments_OpenAIChat(t *testing.T) {
+	body := []byte(`{
+		"messages": [
+			{"role":"user","content":"first user"},
+			{"role":"assistant","content":"assistant text"},
+			{"role":"user","content":[{"type":"text","text":"second user"},{"type":"text","text":"third part"}]}
+		]
+	}`)
+	got := ExtractKeywordFilterLastUserSegments(ContentModerationProtocolOpenAIChat, body)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2: %#v", len(got), got)
+	}
+	if got[0].Text != "second user" || got[1].Text != "third part" {
+		t.Fatalf("unexpected texts: %#v", got)
+	}
+	if got[0].MessageIndex != 2 {
+		t.Fatalf("expected MessageIndex=2 for last user msg, got %d", got[0].MessageIndex)
+	}
+}
+
+func TestExtractKeywordFilterLastUserSegments_Anthropic(t *testing.T) {
+	body := []byte(`{
+		"messages": [
+			{"role":"user","content":"first user"},
+			{"role":"assistant","content":"assistant text"},
+			{"role":"user","content":"last user"}
+		]
+	}`)
+	got := ExtractKeywordFilterLastUserSegments(ContentModerationProtocolAnthropicMessages, body)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1: %#v", len(got), got)
+	}
+	if got[0].Text != "last user" {
+		t.Fatalf("unexpected text: %s", got[0].Text)
+	}
+}
+
+func TestKeywordFilterConfig_InvalidFilterModeRejected(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	cfg := defaultKeywordFilterConfig()
+	cfg.FilterMode = "invalid"
+	err := svc.validateConfig(context.Background(), cfg)
+	if err == nil {
+		t.Fatalf("expected error for invalid filter_mode")
+	}
+	if !strings.Contains(err.Error(), "过滤模式") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
 type keywordFilterSettingRepoStub struct {
 	values map[string]string
 }

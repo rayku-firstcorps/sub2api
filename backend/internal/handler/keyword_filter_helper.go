@@ -127,6 +127,9 @@ func (s *wsKeywordFilterSession) checkWithHistory(c *gin.Context, reqLog *zap.Lo
 	if decision != nil && decision.Blocked {
 		return decision
 	}
+	if svc.IsLenientMode(c.Request.Context()) {
+		return nil
+	}
 	texts := service.ExtractKeywordFilterTexts(protocol, body)
 	if len(texts) == 0 {
 		return nil

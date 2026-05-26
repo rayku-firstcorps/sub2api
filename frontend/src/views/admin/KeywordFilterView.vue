@@ -41,6 +41,23 @@
                 </div>
                 <Toggle v-model="keywordForm.enabled" />
               </div>
+              <div class="mt-4 flex flex-wrap items-start justify-between gap-3 rounded-lg bg-gray-50 px-4 py-3 dark:bg-dark-900/30">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ kt('filterMode') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ kt('filterModeHint') }}</p>
+                </div>
+                <div class="inline-flex shrink-0 rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+                  <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="keywordForm.filter_mode === 'strict' ? selectedSegmentClass : mutedSegmentClass" @click="keywordForm.filter_mode = 'strict'">
+                    {{ kt('filterModeStrict') }}
+                  </button>
+                  <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="keywordForm.filter_mode === 'lenient' ? selectedSegmentClass : mutedSegmentClass" @click="keywordForm.filter_mode = 'lenient'">
+                    {{ kt('filterModeLenient') }}
+                  </button>
+                  <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="keywordForm.filter_mode === 'current_only' ? selectedSegmentClass : mutedSegmentClass" @click="keywordForm.filter_mode = 'current_only'">
+                    {{ kt('filterModeCurrentOnly') }}
+                  </button>
+                </div>
+              </div>
               <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label class="input-label">{{ t('admin.riskControl.blockStatus') }}</label>
@@ -408,6 +425,7 @@ let logsAbortController: AbortController | null = null
 let logsRequestSeq = 0
 const keywordForm = reactive({
   enabled: false,
+  filter_mode: 'strict' as 'strict' | 'lenient' | 'current_only',
   all_groups: true,
   group_ids: [] as number[],
   keyword_rules: [] as KeywordFilterRule[],
@@ -702,6 +720,7 @@ const RuleTable = defineComponent({
 
 function applyKeywordConfig(config: KeywordFilterConfig) {
   keywordForm.enabled = config.enabled
+  keywordForm.filter_mode = config.filter_mode || 'strict'
   keywordForm.all_groups = config.all_groups
   keywordForm.group_ids = Array.isArray(config.group_ids) ? [...config.group_ids] : []
   keywordForm.keyword_rules = normalizeKeywordRules(config.keyword_rules || [], config.keywords || [])
@@ -829,6 +848,7 @@ function buildKeywordPayload(): UpdateKeywordFilterConfig {
   keywordForm.whitelist_rules = whitelistRules
   return {
     enabled: keywordForm.enabled,
+    filter_mode: keywordForm.filter_mode,
     all_groups: keywordForm.all_groups,
     group_ids: keywordForm.all_groups ? [] : [...keywordForm.group_ids],
     keywords: keywordRules.map((rule) => rule.pattern),

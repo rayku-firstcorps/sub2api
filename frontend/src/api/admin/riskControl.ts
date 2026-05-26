@@ -214,6 +214,7 @@ export interface KeywordFilterWhitelistRule {
 
 export interface KeywordFilterConfig {
   enabled: boolean
+  filter_mode: 'strict' | 'lenient' | 'current_only'
   all_groups: boolean
   group_ids: number[]
   keywords: string[]
@@ -228,6 +229,7 @@ export interface KeywordFilterConfig {
 
 export interface UpdateKeywordFilterConfig {
   enabled?: boolean
+  filter_mode?: 'strict' | 'lenient' | 'current_only'
   all_groups?: boolean
   group_ids?: number[]
   keywords?: string[]

@@ -29,6 +29,7 @@ func (h *KeywordFilterHandler) available(c *gin.Context) bool {
 
 type keywordFilterConfigRequest struct {
 	Enabled          *bool                                 `json:"enabled"`
+	FilterMode       *string                               `json:"filter_mode"`
 	AllGroups        *bool                                 `json:"all_groups"`
 	GroupIDs         *[]int64                              `json:"group_ids"`
 	Keywords         *[]string                             `json:"keywords"`
@@ -94,6 +95,7 @@ func (h *KeywordFilterHandler) UpdateConfig(c *gin.Context) {
 	}
 	cfg, err := h.service.UpdateConfig(c.Request.Context(), service.UpdateKeywordFilterConfigInput{
 		Enabled:          req.Enabled,
+		FilterMode:       req.FilterMode,
 		AllGroups:        req.AllGroups,
 		GroupIDs:         req.GroupIDs,
 		Keywords:         req.Keywords,

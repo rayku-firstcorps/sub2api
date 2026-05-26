@@ -353,3 +353,282 @@ func collectKeywordTextContentSegments(value gjson.Result, collector *keywordFil
 		}
 	}
 }
+
+func ExtractKeywordFilterLastUserSegments(protocol string, body []byte) []KeywordFilterTextSegment {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return nil
+	}
+	collector := &keywordFilterSegmentCollector{protocol: protocol}
+	switch protocol {
+	case ContentModerationProtocolAnthropicMessages:
+		collectLastAnthropicUserMessageSegments(gjson.GetBytes(body, "messages"), collector)
+	case ContentModerationProtocolOpenAIChat:
+		collectLastRoleMessageSegments(gjson.GetBytes(body, "messages"), "user", collector)
+	case ContentModerationProtocolOpenAIResponses:
+		collectLastResponsesInputSegments(gjson.GetBytes(body, "input"), collector)
+	case ContentModerationProtocolGemini:
+		collectLastGeminiUserContentSegments(gjson.GetBytes(body, "contents"), collector)
+	case ContentModerationProtocolOpenAIImages:
+		return nil
+	default:
+		collectLastResponsesInputSegments(gjson.GetBytes(body, "input"), collector)
+		collectLastRoleMessageSegments(gjson.GetBytes(body, "messages"), "user", collector)
+		collectLastGeminiUserContentSegments(gjson.GetBytes(body, "contents"), collector)
+	}
+	return collector.segments
+}
+
+func collectLastRoleMessageSegments(messages gjson.Result, role string, collector *keywordFilterSegmentCollector) {
+	if !messages.IsArray() {
+		return
+	}
+	var lastMsg gjson.Result
+	lastIndex := -1
+	messageIndex := 0
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		if strings.ToLower(strings.TrimSpace(msg.Get("role").String())) == role {
+			lastMsg = msg
+			lastIndex = messageIndex
+		}
+		messageIndex++
+		return true
+	})
+	if lastIndex >= 0 {
+		collectKeywordTextContentSegments(lastMsg.Get("content"), collector, lastIndex, -1)
+	}
+}
+
+func collectLastAnthropicUserMessageSegments(messages gjson.Result, collector *keywordFilterSegmentCollector) {
+	if !messages.IsArray() {
+		return
+	}
+	var lastMsg gjson.Result
+	lastIndex := -1
+	messageIndex := 0
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		if strings.ToLower(strings.TrimSpace(msg.Get("role").String())) == "user" {
+			lastMsg = msg
+			lastIndex = messageIndex
+		}
+		messageIndex++
+		return true
+	})
+	if lastIndex >= 0 {
+		collectAnthropicKeywordContentSegments(lastMsg.Get("content"), collector, lastIndex, -1)
+	}
+}
+
+func collectLastResponsesInputSegments(input gjson.Result, collector *keywordFilterSegmentCollector) {
+	switch {
+	case !input.Exists():
+		return
+	case input.Type == gjson.String:
+		collector.add(input.String(), -1, -1)
+	case input.IsArray():
+		var lastItem gjson.Result
+		lastIndex := -1
+		messageIndex := 0
+		input.ForEach(func(_, item gjson.Result) bool {
+			if isResponsesUserTextItem(item) {
+				lastItem = item
+				lastIndex = messageIndex
+			}
+			messageIndex++
+			return true
+		})
+		if lastIndex >= 0 {
+			collectResponsesKeywordItemTextSegments(lastItem, collector, lastIndex)
+		}
+	case input.IsObject():
+		if isResponsesUserTextItem(input) {
+			collectResponsesKeywordItemTextSegments(input, collector, 0)
+		}
+	}
+}
+
+func collectLastGeminiUserContentSegments(contents gjson.Result, collector *keywordFilterSegmentCollector) {
+	if !contents.IsArray() {
+		return
+	}
+	var lastContent gjson.Result
+	lastIndex := -1
+	messageIndex := 0
+	contents.ForEach(func(_, content gjson.Result) bool {
+		role := strings.ToLower(strings.TrimSpace(content.Get("role").String()))
+		if role == "" || role == "user" {
+			lastContent = content
+			lastIndex = messageIndex
+		}
+		messageIndex++
+		return true
+	})
+	if lastIndex >= 0 {
+		if arr := lastContent.Get("parts"); arr.IsArray() {
+			partIndex := 0
+			arr.ForEach(func(_, part gjson.Result) bool {
+				collector.add(part.Get("text").String(), lastIndex, partIndex)
+				partIndex++
+				return true
+			})
+		}
+	}
+}
+
+func ExtractKeywordFilterLastUserLastPartSegments(protocol string, body []byte) []KeywordFilterTextSegment {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return nil
+	}
+	collector := &keywordFilterSegmentCollector{protocol: protocol}
+	switch protocol {
+	case ContentModerationProtocolAnthropicMessages:
+		collectLastAnthropicUserMessageLastPartSegments(gjson.GetBytes(body, "messages"), collector)
+	case ContentModerationProtocolOpenAIChat:
+		collectLastRoleMessageLastPartSegments(gjson.GetBytes(body, "messages"), "user", collector)
+	case ContentModerationProtocolOpenAIResponses:
+		collectLastResponsesInputSegments(gjson.GetBytes(body, "input"), collector)
+	case ContentModerationProtocolGemini:
+		collectLastGeminiUserContentLastPartSegments(gjson.GetBytes(body, "contents"), collector)
+	case ContentModerationProtocolOpenAIImages:
+		return nil
+	default:
+		collectLastResponsesInputSegments(gjson.GetBytes(body, "input"), collector)
+		collectLastRoleMessageLastPartSegments(gjson.GetBytes(body, "messages"), "user", collector)
+		collectLastGeminiUserContentLastPartSegments(gjson.GetBytes(body, "contents"), collector)
+	}
+	return collector.segments
+}
+
+func collectLastRoleMessageLastPartSegments(messages gjson.Result, role string, collector *keywordFilterSegmentCollector) {
+	if !messages.IsArray() {
+		return
+	}
+	var lastMsg gjson.Result
+	lastIndex := -1
+	messageIndex := 0
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		if strings.ToLower(strings.TrimSpace(msg.Get("role").String())) == role {
+			lastMsg = msg
+			lastIndex = messageIndex
+		}
+		messageIndex++
+		return true
+	})
+	if lastIndex < 0 {
+		return
+	}
+	content := lastMsg.Get("content")
+	if !content.Exists() {
+		return
+	}
+	if content.Type == gjson.String {
+		collector.add(content.String(), lastIndex, 0)
+		return
+	}
+	if content.IsArray() {
+		var lastText gjson.Result
+		lastPartIndex := -1
+		partIndex := 0
+		content.ForEach(func(_, item gjson.Result) bool {
+			currentPart := partIndex
+			partIndex++
+			typ := strings.ToLower(strings.TrimSpace(item.Get("type").String()))
+			if typ == "" || typ == "text" || typ == "input_text" || typ == "message" {
+				if item.Get("text").Exists() && strings.TrimSpace(item.Get("text").String()) != "" {
+					lastText = item
+					lastPartIndex = currentPart
+				}
+			}
+			return true
+		})
+		if lastPartIndex >= 0 {
+			collector.add(lastText.Get("text").String(), lastIndex, lastPartIndex)
+		}
+	}
+}
+
+func collectLastAnthropicUserMessageLastPartSegments(messages gjson.Result, collector *keywordFilterSegmentCollector) {
+	if !messages.IsArray() {
+		return
+	}
+	var lastMsg gjson.Result
+	lastIndex := -1
+	messageIndex := 0
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		if strings.ToLower(strings.TrimSpace(msg.Get("role").String())) == "user" {
+			lastMsg = msg
+			lastIndex = messageIndex
+		}
+		messageIndex++
+		return true
+	})
+	if lastIndex < 0 {
+		return
+	}
+	content := lastMsg.Get("content")
+	if !content.Exists() {
+		return
+	}
+	if content.Type == gjson.String {
+		collector.add(content.String(), lastIndex, 0)
+		return
+	}
+	if content.IsArray() {
+		var lastText gjson.Result
+		lastPartIndex := -1
+		partIndex := 0
+		content.ForEach(func(_, item gjson.Result) bool {
+			currentPart := partIndex
+			partIndex++
+			typ := strings.ToLower(strings.TrimSpace(item.Get("type").String()))
+			switch typ {
+			case "", "text", "input_text", "message":
+				if item.Get("text").Exists() && strings.TrimSpace(item.Get("text").String()) != "" {
+					lastText = item
+					lastPartIndex = currentPart
+				}
+			}
+			return true
+		})
+		if lastPartIndex >= 0 {
+			collector.add(lastText.Get("text").String(), lastIndex, lastPartIndex)
+		}
+	}
+}
+
+func collectLastGeminiUserContentLastPartSegments(contents gjson.Result, collector *keywordFilterSegmentCollector) {
+	if !contents.IsArray() {
+		return
+	}
+	var lastContent gjson.Result
+	lastIndex := -1
+	messageIndex := 0
+	contents.ForEach(func(_, content gjson.Result) bool {
+		role := strings.ToLower(strings.TrimSpace(content.Get("role").String()))
+		if role == "" || role == "user" {
+			lastContent = content
+			lastIndex = messageIndex
+		}
+		messageIndex++
+		return true
+	})
+	if lastIndex < 0 {
+		return
+	}
+	if arr := lastContent.Get("parts"); arr.IsArray() {
+		var lastPart gjson.Result
+		lastPartIndex := -1
+		partIndex := 0
+		arr.ForEach(func(_, part gjson.Result) bool {
+			currentPart := partIndex
+			partIndex++
+			if strings.TrimSpace(part.Get("text").String()) != "" {
+				lastPart = part
+				lastPartIndex = currentPart
+			}
+			return true
+		})
+		if lastPartIndex >= 0 {
+			collector.add(lastPart.Get("text").String(), lastIndex, lastPartIndex)
+		}
+	}
+}

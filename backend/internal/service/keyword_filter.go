@@ -37,6 +37,10 @@ const (
 	KeywordFilterMatchModeExactPhrase = "exact_phrase"
 	KeywordFilterMatchModeCJKToken    = "cjk_token"
 
+	KeywordFilterModeStrict      = "strict"
+	KeywordFilterModeLenient     = "lenient"
+	KeywordFilterModeCurrentOnly = "current_only"
+
 	defaultKeywordFilterBlockStatus      = http.StatusForbidden
 	defaultKeywordFilterBlockMessage     = "输入内容命中关键词过滤规则，请调整后重试"
 	defaultKeywordFilterHitRetentionDays = 180
@@ -53,6 +57,7 @@ const (
 
 type KeywordFilterConfig struct {
 	Enabled          bool                         `json:"enabled"`
+	FilterMode       string                       `json:"filter_mode"`
 	AllGroups        bool                         `json:"all_groups"`
 	GroupIDs         []int64                      `json:"group_ids"`
 	Keywords         []string                     `json:"keywords"`
@@ -92,6 +97,7 @@ type KeywordFilterWhitelistRule struct {
 
 type UpdateKeywordFilterConfigInput struct {
 	Enabled          *bool                         `json:"enabled"`
+	FilterMode       *string                       `json:"filter_mode"`
 	AllGroups        *bool                         `json:"all_groups"`
 	GroupIDs         *[]int64                      `json:"group_ids"`
 	Keywords         *[]string                     `json:"keywords"`
@@ -361,7 +367,15 @@ func (s *KeywordFilterService) Check(ctx context.Context, input KeywordFilterChe
 	if !cfg.Enabled || !cfg.includesGroup(input.GroupID) {
 		return allow, nil
 	}
-	segments := ExtractKeywordFilterSegments(input.Protocol, input.Body)
+	var segments []KeywordFilterTextSegment
+	switch cfg.FilterMode {
+	case KeywordFilterModeCurrentOnly:
+		segments = ExtractKeywordFilterLastUserLastPartSegments(input.Protocol, input.Body)
+	case KeywordFilterModeLenient:
+		segments = ExtractKeywordFilterLastUserSegments(input.Protocol, input.Body)
+	default:
+		segments = ExtractKeywordFilterSegments(input.Protocol, input.Body)
+	}
 	if len(segments) == 0 {
 		return allow, nil
 	}
@@ -491,6 +505,17 @@ func (s *KeywordFilterService) isKeywordFilterEnabled(ctx context.Context) bool 
 	return raw == "true"
 }
 
+func (s *KeywordFilterService) IsLenientMode(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	snapshot, err := s.runtimeSnapshot(ctx)
+	if err != nil || snapshot == nil || snapshot.config == nil {
+		return false
+	}
+	return snapshot.config.FilterMode == KeywordFilterModeLenient || snapshot.config.FilterMode == KeywordFilterModeCurrentOnly
+}
+
 func (s *KeywordFilterService) runtimeSnapshot(ctx context.Context) (*keywordFilterRuntimeSnapshot, error) {
 	if s == nil || s.settingRepo == nil {
 		return nil, nil
@@ -604,6 +629,9 @@ func (s *KeywordFilterService) compileKeywordFilterRules(cfg *KeywordFilterConfi
 func (s *KeywordFilterService) validateConfig(ctx context.Context, cfg *KeywordFilterConfig) error {
 	if cfg == nil {
 		return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_CONFIG", "关键词过滤配置不能为空")
+	}
+	if cfg.FilterMode != "" && cfg.FilterMode != KeywordFilterModeStrict && cfg.FilterMode != KeywordFilterModeLenient && cfg.FilterMode != KeywordFilterModeCurrentOnly {
+		return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_MODE", "过滤模式仅支持 strict、lenient 或 current_only")
 	}
 	if cfg.BlockStatus != 0 && (cfg.BlockStatus < 400 || cfg.BlockStatus > 599) {
 		return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_BLOCK_STATUS", "拦截 HTTP 状态码必须在 400-599 之间")
@@ -1419,6 +1447,9 @@ func (cfg *KeywordFilterConfig) normalize() {
 	if cfg == nil {
 		return
 	}
+	if cfg.FilterMode != KeywordFilterModeStrict && cfg.FilterMode != KeywordFilterModeLenient && cfg.FilterMode != KeywordFilterModeCurrentOnly {
+		cfg.FilterMode = KeywordFilterModeStrict
+	}
 	cfg.GroupIDs = normalizeInt64IDs(cfg.GroupIDs)
 	cfg.Keywords = normalizeKeywordFilterList(cfg.Keywords)
 	cfg.Whitelist = normalizeKeywordFilterList(cfg.Whitelist)
@@ -1750,6 +1781,9 @@ func applyKeywordFilterConfigPatch(cfg *KeywordFilterConfig, input UpdateKeyword
 	if input.Enabled != nil {
 		cfg.Enabled = *input.Enabled
 	}
+	if input.FilterMode != nil {
+		cfg.FilterMode = *input.FilterMode
+	}
 	if input.AllGroups != nil {
 		cfg.AllGroups = *input.AllGroups
 	}
@@ -1788,6 +1822,7 @@ func applyKeywordFilterConfigPatch(cfg *KeywordFilterConfig, input UpdateKeyword
 
 func keywordFilterConfigPatchProvided(input UpdateKeywordFilterConfigInput) bool {
 	return input.Enabled != nil ||
+		input.FilterMode != nil ||
 		input.AllGroups != nil ||
 		input.GroupIDs != nil ||
 		input.Keywords != nil ||
