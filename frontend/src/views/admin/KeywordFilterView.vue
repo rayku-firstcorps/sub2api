@@ -119,7 +119,7 @@
             <div v-if="keywordForm.regex_rules.length === 0" class="rounded-lg border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400">
               {{ kt('noRegexRules') }}
             </div>
-            <div v-for="(rule, index) in keywordForm.regex_rules" :key="`${rule.name}-${index}`" class="grid grid-cols-1 gap-2 rounded-lg bg-gray-50 p-3 dark:bg-dark-900/30 lg:grid-cols-[180px_minmax(0,1fr)_auto_auto] lg:items-center">
+            <div v-for="(rule, index) in keywordForm.regex_rules" :key="`regex-${index}`" class="grid grid-cols-1 gap-2 rounded-lg bg-gray-50 p-3 dark:bg-dark-900/30 lg:grid-cols-[180px_minmax(0,1fr)_auto_auto] lg:items-center">
               <input v-model.trim="rule.name" type="text" class="input h-9" :placeholder="kt('regexName')" />
               <input v-model.trim="rule.pattern" type="text" class="input h-9 font-mono text-sm" :placeholder="kt('regexPattern')" />
               <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
@@ -366,9 +366,17 @@ type ImportSummary = {
 
 const defaultKeywordFilterBlockMessage = '输入内容命中关键词过滤规则，请调整后重试'
 const maxRulePatternLength = 256
+const maxRegexPatternLength = 512
 const maxRulesPerKind = 1000
 const selectedSegmentClass = 'bg-white text-gray-900 shadow-sm dark:bg-dark-800 dark:text-white'
 const mutedSegmentClass = 'text-gray-500 dark:text-gray-400'
+const regexFeatureChars = new Set(['\\', '[', ']', '(', ')', '{', '}', '.', '*', '+', '?', '|'])
+const regexValidationFallbacks: Record<string, string> = {
+  regexNameRequired: '正则规则名称不能为空。',
+  regexPatternRequired: '正则表达式不能为空。',
+  regexPatternTooLong: '正则表达式不能超过 512 个字符。',
+  regexPatternLiteral: '正则兜底规则必须包含正则语法，普通词条请添加到黑名单规则。',
+}
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -726,6 +734,10 @@ async function loadLogs() {
 }
 
 function buildKeywordPayload(): UpdateKeywordFilterConfig {
+  const regexError = validateRegexRules(keywordForm.regex_rules)
+  if (regexError) {
+    throw new Error(regexError)
+  }
   const keywordRules = sanitizeKeywordRules(keywordForm.keyword_rules)
   const whitelistRules = pruneWhitelistTargets(
     sanitizeWhitelistRules(keywordForm.whitelist_rules),
@@ -755,7 +767,8 @@ async function saveConfig() {
   }
   saving.value = true
   try {
-    const updated = await adminAPI.riskControl.updateKeywordFilterConfig(buildKeywordPayload())
+    const payload = buildKeywordPayload()
+    const updated = await adminAPI.riskControl.updateKeywordFilterConfig(payload)
     applyKeywordConfig(updated)
     appStore.showSuccess(kt('saved'))
     await loadLogs()
@@ -769,9 +782,10 @@ async function saveConfig() {
 async function testKeywordFilter() {
   keywordTesting.value = true
   try {
+    const payload = buildKeywordPayload()
     keywordTestResult.value = await adminAPI.riskControl.testKeywordFilter({
       text: keywordTestText.value,
-      config: buildKeywordPayload(),
+      config: payload,
     })
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, kt('testFailed')))
@@ -1124,6 +1138,31 @@ function parseImportEnabled(value: string): boolean {
 
 function splitTargetPatterns(value: string): string[] {
   return value.split(';').map((item) => item.trim()).filter(Boolean)
+}
+
+function validateRegexRules(rules: KeywordFilterRegexRule[]): string {
+  for (const rule of rules) {
+    const name = rule.name.trim()
+    const pattern = rule.pattern.trim()
+    if (!name && !pattern) continue
+    if (!name) return keywordRegexValidationMessage('regexNameRequired')
+    if (!pattern) return keywordRegexValidationMessage('regexPatternRequired')
+    if ([...pattern].length > maxRegexPatternLength) return keywordRegexValidationMessage('regexPatternTooLong')
+    if (!regexPatternHasFeature(pattern)) return keywordRegexValidationMessage('regexPatternLiteral')
+  }
+  return ''
+}
+
+function regexPatternHasFeature(pattern: string): boolean {
+  for (const char of pattern) {
+    if (regexFeatureChars.has(char)) return true
+  }
+  return false
+}
+
+function keywordRegexValidationMessage(key: string): string {
+  const value = kt(key)
+  return value === `admin.keywordFilter.${key}` ? regexValidationFallbacks[key] || value : value
 }
 
 function sanitizeKeywordRules(rules: KeywordFilterRule[]): KeywordFilterRule[] {

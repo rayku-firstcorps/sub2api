@@ -178,10 +178,10 @@ func buildKeywordFilterLogWhere(filter service.KeywordFilterLogFilter) ([]string
 		add("l.endpoint = $%d", endpoint)
 	}
 	if search := strings.TrimSpace(filter.Search); search != "" {
-		like := "%" + search + "%"
+		like := "%" + escapePostgresLike(search) + "%"
 		args = append(args, like, like, like, like, like, like)
 		idx := len(args) - 5
-		where = append(where, fmt.Sprintf("(l.request_id ILIKE $%d OR l.user_email ILIKE $%d OR l.api_key_name ILIKE $%d OR l.model ILIKE $%d OR l.rule_name ILIKE $%d OR l.input_excerpt ILIKE $%d)", idx, idx+1, idx+2, idx+3, idx+4, idx+5))
+		where = append(where, fmt.Sprintf("(l.request_id ILIKE $%d ESCAPE '\\' OR l.user_email ILIKE $%d ESCAPE '\\' OR l.api_key_name ILIKE $%d ESCAPE '\\' OR l.model ILIKE $%d ESCAPE '\\' OR l.rule_name ILIKE $%d ESCAPE '\\' OR l.input_excerpt ILIKE $%d ESCAPE '\\')", idx, idx+1, idx+2, idx+3, idx+4, idx+5))
 	}
 	if filter.From != nil && !filter.From.IsZero() {
 		add("l.created_at >= $%d", *filter.From)
@@ -190,4 +190,11 @@ func buildKeywordFilterLogWhere(filter service.KeywordFilterLogFilter) ([]string
 		add("l.created_at <= $%d", *filter.To)
 	}
 	return where, args
+}
+
+func escapePostgresLike(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `%`, `\%`)
+	value = strings.ReplaceAll(value, `_`, `\_`)
+	return value
 }
