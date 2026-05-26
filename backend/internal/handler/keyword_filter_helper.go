@@ -2,8 +2,11 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -103,4 +106,48 @@ func keywordFilterRequestID(ctx context.Context) string {
 		return strings.TrimSpace(requestID)
 	}
 	return ""
+}
+
+const wsKeywordFilterWindowMaxRunes = 512
+
+type wsKeywordFilterSession struct {
+	mu     sync.Mutex
+	window []rune
+}
+
+func newWSKeywordFilterSession() *wsKeywordFilterSession {
+	return &wsKeywordFilterSession{}
+}
+
+func (s *wsKeywordFilterSession) checkWithHistory(c *gin.Context, reqLog *zap.Logger, svc *service.KeywordFilterService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.KeywordFilterDecision {
+	if svc == nil {
+		return nil
+	}
+	decision := runKeywordFilter(c, reqLog, svc, apiKey, subject, protocol, model, body)
+	if decision != nil && decision.Blocked {
+		return decision
+	}
+	texts := service.ExtractKeywordFilterTexts(protocol, body)
+	if len(texts) == 0 {
+		return nil
+	}
+	currentText := strings.Join(texts, " ")
+	s.mu.Lock()
+	s.window = append(s.window, []rune(currentText)...)
+	if len(s.window) > wsKeywordFilterWindowMaxRunes {
+		s.window = s.window[len(s.window)-wsKeywordFilterWindowMaxRunes:]
+	}
+	combined := string(s.window)
+	s.mu.Unlock()
+	if combined == currentText {
+		return nil
+	}
+	syntheticBody, err := json.Marshal(struct {
+		Input string `json:"input"`
+	}{Input: combined})
+	if err != nil {
+		slog.Warn("keyword_filter.ws_synthetic_body_marshal_failed", "error", err)
+		return nil
+	}
+	return runKeywordFilter(c, reqLog, svc, apiKey, subject, protocol, model, syntheticBody)
 }

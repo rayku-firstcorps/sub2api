@@ -76,9 +76,7 @@ func collectAnthropicKeywordContent(value gjson.Result, parts *[]string) {
 	case !value.Exists():
 		return
 	case value.Type == gjson.String:
-		if !isAnthropicSystemReminderText(value.String()) {
-			addKeywordFilterText(parts, value.String())
-		}
+		addKeywordFilterText(parts, value.String())
 	case value.IsArray():
 		value.ForEach(func(_, item gjson.Result) bool {
 			collectAnthropicKeywordContent(item, parts)
@@ -88,7 +86,7 @@ func collectAnthropicKeywordContent(value gjson.Result, parts *[]string) {
 		typ := strings.ToLower(strings.TrimSpace(value.Get("type").String()))
 		switch typ {
 		case "", "text", "input_text", "message":
-			if value.Get("text").Exists() && !isAnthropicSystemReminderText(value.Get("text").String()) {
+			if value.Get("text").Exists() {
 				addKeywordFilterText(parts, value.Get("text").String())
 			}
 			if value.Get("content").Exists() {
@@ -171,7 +169,7 @@ func collectKeywordTextContent(value gjson.Result, parts *[]string) {
 
 func addKeywordFilterText(parts *[]string, text string) {
 	text = strings.TrimSpace(text)
-	if text == "" || strings.Contains(text, "<system-reminder>") {
+	if text == "" {
 		return
 	}
 	*parts = append(*parts, text)
@@ -198,7 +196,7 @@ func (c *keywordFilterSegmentCollector) add(text string, messageIndex int, partI
 		return
 	}
 	text = strings.TrimSpace(text)
-	if text == "" || strings.Contains(text, "<system-reminder>") {
+	if text == "" {
 		return
 	}
 	c.segments = append(c.segments, KeywordFilterTextSegment{
@@ -245,9 +243,7 @@ func collectAnthropicKeywordContentSegments(value gjson.Result, collector *keywo
 	case !value.Exists():
 		return
 	case value.Type == gjson.String:
-		if !isAnthropicSystemReminderText(value.String()) {
-			collector.add(value.String(), messageIndex, partIndex)
-		}
+		collector.add(value.String(), messageIndex, partIndex)
 	case value.IsArray():
 		index := 0
 		value.ForEach(func(_, item gjson.Result) bool {
@@ -263,7 +259,7 @@ func collectAnthropicKeywordContentSegments(value gjson.Result, collector *keywo
 		typ := strings.ToLower(strings.TrimSpace(value.Get("type").String()))
 		switch typ {
 		case "", "text", "input_text", "message":
-			if value.Get("text").Exists() && !isAnthropicSystemReminderText(value.Get("text").String()) {
+			if value.Get("text").Exists() {
 				collector.add(value.Get("text").String(), messageIndex, partIndex)
 			}
 			if value.Get("content").Exists() {

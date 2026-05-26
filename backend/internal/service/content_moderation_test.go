@@ -397,7 +397,7 @@ func TestExtractContentModerationInput_AnthropicImageSourceOnlyParticipatesInMem
 	require.NotContains(t, log.InputExcerpt, "aGVsbG8=")
 }
 
-func TestExtractContentModerationInput_AnthropicKeepsEphemeralUserTextAndSkipsSystemReminders(t *testing.T) {
+func TestExtractContentModerationInput_AnthropicKeepsEphemeralUserTextIncludingSystemReminderPrefix(t *testing.T) {
 	body := []byte(`{
 		"messages": [
 			{
@@ -413,7 +413,7 @@ func TestExtractContentModerationInput_AnthropicKeepsEphemeralUserTextAndSkipsSy
 
 	input := ExtractContentModerationInput(ContentModerationProtocolAnthropicMessages, body)
 
-	require.Equal(t, "hid", input.Text)
+	require.Equal(t, "<system-reminder>工具说明</system-reminder> <system-reminder>Ainder> hid", input.Text)
 	require.Empty(t, input.Images)
 }
 

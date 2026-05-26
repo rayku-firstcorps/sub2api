@@ -2601,6 +2601,7 @@ export default {
       recordsHint: 'Shows pre-filter blocks from keyword and structured regex matches.',
       emptyLogs: 'No keyword hit records',
       logsFailed: 'Failed to load keyword hit records',
+      confirmDeleteRule: 'Are you sure you want to delete this rule? You must save the config for changes to take effect.',
       match: 'Match',
       keyword: 'Keyword',
       regex: 'Regex',

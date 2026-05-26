@@ -210,6 +210,7 @@ type KeywordFilterService struct {
 	converter         *opencc.OpenCC
 	runtimeCache      atomic.Value // *keywordFilterRuntimeSnapshot
 	runtimeRefresh    singleflight.Group
+	configMu          sync.Mutex
 	lastCleanupUnix   atomic.Int64
 	lastCleanupDelete atomic.Int64
 	cleanupCtx        context.Context
@@ -310,6 +311,8 @@ func (s *KeywordFilterService) UpdateConfig(ctx context.Context, input UpdateKey
 	if s == nil || s.settingRepo == nil {
 		return nil, infraerrors.InternalServer("KEYWORD_FILTER_UNAVAILABLE", "keyword filter service unavailable")
 	}
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -337,13 +340,22 @@ func (s *KeywordFilterService) Check(ctx context.Context, input KeywordFilterChe
 	if s == nil || s.settingRepo == nil || s.repo == nil {
 		return allow, nil
 	}
+	if !s.isKeywordFilterEnabled(ctx) {
+		return allow, nil
+	}
 	snapshot, err := s.runtimeSnapshot(ctx)
 	if err != nil {
 		slog.Warn("keyword_filter.config_load_failed", "error", err)
 		return allow, nil
 	}
-	if snapshot == nil || !snapshot.systemEnabled || snapshot.config == nil {
+	if snapshot == nil || snapshot.config == nil {
 		return allow, nil
+	}
+	if !snapshot.systemEnabled {
+		snapshot, err = s.refreshRuntimeSnapshot(ctx, nil)
+		if err != nil || snapshot == nil || snapshot.config == nil {
+			return allow, nil
+		}
 	}
 	cfg := snapshot.config
 	if !cfg.Enabled || !cfg.includesGroup(input.GroupID) {
@@ -392,11 +404,19 @@ func (s *KeywordFilterService) Test(ctx context.Context, input KeywordFilterTest
 	}
 	if input.Config != nil && keywordFilterConfigPatchProvided(*input.Config) {
 		applyKeywordFilterConfigPatch(cfg, *input.Config)
-		cfg.normalize()
 	}
 	segments := []KeywordFilterTextSegment{{Text: input.Text, SegmentIndex: 0, MessageIndex: -1, PartIndex: -1}}
 	normalizedSegments := s.normalizeSegments(segments)
-	match := s.matchSegments(cfg, normalizedSegments)
+	cfg = cloneKeywordFilterConfig(cfg)
+	if err := s.validateConfig(ctx, cfg); err != nil {
+		return nil, err
+	}
+	cfg.normalize()
+	compiled, err := s.compileKeywordFilterRules(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("invalid filter config: %w", err)
+	}
+	match := s.matchCompiledSegments(compiled, normalizedSegments)
 	normalized := normalizedKeywordText{}
 	if len(normalizedSegments) > 0 {
 		normalized = normalizedSegments[0].Normalized
@@ -585,12 +605,12 @@ func (s *KeywordFilterService) validateConfig(ctx context.Context, cfg *KeywordF
 	if cfg == nil {
 		return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_CONFIG", "关键词过滤配置不能为空")
 	}
+	if cfg.BlockStatus != 0 && (cfg.BlockStatus < 400 || cfg.BlockStatus > 599) {
+		return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_BLOCK_STATUS", "拦截 HTTP 状态码必须在 400-599 之间")
+	}
 	cfg.normalize()
 	if err := validateKeywordFilterRuleModes(cfg); err != nil {
 		return err
-	}
-	if cfg.BlockStatus < 400 || cfg.BlockStatus > 599 {
-		return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_BLOCK_STATUS", "拦截 HTTP 状态码必须在 400-599 之间")
 	}
 	if len(cfg.KeywordRules) > maxKeywordFilterRules || len(cfg.WhitelistRules) > maxKeywordFilterRules || len(cfg.RegexRules) > maxKeywordFilterRules {
 		return infraerrors.BadRequest("KEYWORD_FILTER_RULE_LIMIT_EXCEEDED", "关键词过滤规则数量超过限制")
@@ -628,6 +648,9 @@ func (s *KeywordFilterService) validateConfig(ctx context.Context, cfg *KeywordF
 				return infraerrors.BadRequest("INVALID_KEYWORD_FILTER_GROUP", fmt.Sprintf("Keyword filter group does not exist: %d", groupID))
 			}
 		}
+	}
+	if !cfg.AllGroups && len(cfg.GroupIDs) == 0 {
+		return infraerrors.BadRequest("KEYWORD_FILTER_EMPTY_GROUP_IDS", "group_ids cannot be empty when all_groups is false")
 	}
 	return nil
 }
@@ -739,12 +762,13 @@ func (s *KeywordFilterService) matchCompiledSegments(compiled *keywordFilterComp
 }
 
 func (s *KeywordFilterService) matchCompiledRegexRules(rules []compiledKeywordFilterRegexRule, input normalizedKeywordText, segment KeywordFilterTextSegment) *keywordFilterMatch {
+	regexText := input.RegexText
 	for _, compiled := range rules {
 		if compiled.Re == nil {
 			continue
 		}
 		rule := compiled.Rule
-		loc := compiled.Re.FindStringIndex(input.RegexText)
+		loc := compiled.Re.FindStringIndex(regexText)
 		if len(loc) == 2 {
 			display := input.originalForRegexRange(loc[0], loc[1])
 			return &keywordFilterMatch{
@@ -1455,6 +1479,9 @@ func (cfg *KeywordFilterConfig) includesGroup(groupID *int64) bool {
 	}
 	if cfg.AllGroups {
 		return true
+	}
+	if len(cfg.GroupIDs) == 0 {
+		return false
 	}
 	if groupID == nil {
 		return false

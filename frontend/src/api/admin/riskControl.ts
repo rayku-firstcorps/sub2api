@@ -377,10 +377,12 @@ export async function testKeywordFilter(payload: string | KeywordFilterTestPaylo
 }
 
 export async function listKeywordFilterLogs(
-  params: ListKeywordFilterLogsParams = {}
+  params: ListKeywordFilterLogsParams = {},
+  signal?: AbortSignal
 ): Promise<KeywordFilterLogsResponse> {
   const { data } = await apiClient.get<KeywordFilterLogsResponse>('/admin/risk-control/keyword-filter/logs', {
     params,
+    signal,
   })
   return data
 }

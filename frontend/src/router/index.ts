@@ -796,16 +796,14 @@ router.beforeEach((to, _from, next) => {
   }
 
   if (to.meta.requiresKeywordFilter) {
-    const keywordFilterEnabled = appStore.cachedPublicSettings?.keyword_filter_enabled === true
-    if (!keywordFilterEnabled) {
+    if (appStore.cachedPublicSettings && !appStore.cachedPublicSettings.keyword_filter_enabled) {
       next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
       return
     }
   }
 
   if (to.meta.requiresRiskControl) {
-    const riskControlEnabled = appStore.cachedPublicSettings?.risk_control_enabled === true
-    if (!riskControlEnabled) {
+    if (appStore.cachedPublicSettings && !appStore.cachedPublicSettings.risk_control_enabled) {
       next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
       return
     }

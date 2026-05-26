@@ -99,18 +99,14 @@ func (m *keywordFilterMatcher) Scan(text string, fn func(keywordFilterACMatch) b
 			continue
 		}
 		end := idx + utf8.RuneLen(r)
-		best := ""
 		for _, pattern := range m.nodes[state].Outputs {
-			if best == "" || len(pattern) > len(best) {
-				best = pattern
+			if !fn(keywordFilterACMatch{
+				Pattern: pattern,
+				Start:   end - len(pattern),
+				End:     end,
+			}) {
+				return
 			}
-		}
-		if !fn(keywordFilterACMatch{
-			Pattern: best,
-			Start:   end - len(best),
-			End:     end,
-		}) {
-			return
 		}
 	}
 }

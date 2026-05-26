@@ -242,6 +242,23 @@ func TestKeywordFilterService_ValidateRegexRulesRejectsLongPatterns(t *testing.T
 	}
 }
 
+func TestKeywordFilterService_RegexScansLongInputWithoutChunkAnchorFalsePositive(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	cfg := defaultKeywordFilterConfig()
+	cfg.RegexRules = []KeywordFilterRegexRule{{Name: "tail_phone", Pattern: `1[3-9]\d{9}`, Enabled: true}}
+
+	match := svc.match(cfg, svc.normalizeText(strings.Repeat("a", 70000)+" 13800138000"))
+	if match == nil || match.MatchType != KeywordFilterMatchTypeRegex {
+		t.Fatalf("expected regex match in long input tail, got %#v", match)
+	}
+
+	cfg.RegexRules = []KeywordFilterRegexRule{{Name: "anchored", Pattern: `^badword\d+`, Enabled: true}}
+	match = svc.match(cfg, svc.normalizeText(strings.Repeat("a", 70000)+"badword123"))
+	if match != nil {
+		t.Fatalf("expected anchored regex not to match in long input tail, got %#v", match)
+	}
+}
+
 func TestExtractKeywordFilterSegments_OpenAIChatParts(t *testing.T) {
 	body := []byte(`{
 		"messages": [
@@ -309,6 +326,34 @@ func TestKeywordFilterService_TestUsesInlineConfig(t *testing.T) {
 	}
 	if result == nil || !result.Blocked || result.MatchType != KeywordFilterMatchTypeKeyword {
 		t.Fatalf("expected inline config keyword block, got %#v", result)
+	}
+}
+
+func TestKeywordFilterService_TestRejectsInvalidBlockStatusLikeUpdate(t *testing.T) {
+	svc := NewKeywordFilterService(nil, nil, nil)
+	invalidStatus := 200
+	_, err := svc.Test(context.Background(), KeywordFilterTestInput{
+		Text: "anything",
+		Config: &UpdateKeywordFilterConfigInput{
+			BlockStatus: &invalidStatus,
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected invalid block status to be rejected")
+	}
+}
+
+func TestKeywordFilterConfig_IncludesGroupEmptyScopedConfigMatchesNoGroups(t *testing.T) {
+	cfg := defaultKeywordFilterConfig()
+	cfg.AllGroups = false
+	cfg.GroupIDs = nil
+	groupID := int64(1)
+
+	if cfg.includesGroup(nil) {
+		t.Fatalf("expected nil group to be out of scope when group_ids is empty")
+	}
+	if cfg.includesGroup(&groupID) {
+		t.Fatalf("expected concrete group to be out of scope when group_ids is empty")
 	}
 }
 

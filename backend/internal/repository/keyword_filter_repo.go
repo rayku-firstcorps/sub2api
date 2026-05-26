@@ -146,14 +146,26 @@ func (r *keywordFilterRepository) CleanupExpiredLogs(ctx context.Context, before
 	if r == nil || r.db == nil {
 		return result, nil
 	}
-	exec, err := r.db.ExecContext(ctx, `
+	const batchSize = 5000
+	for {
+		exec, err := r.db.ExecContext(ctx, `
 DELETE FROM keyword_filter_logs
-WHERE created_at < $1
-`, before)
-	if err != nil {
-		return nil, fmt.Errorf("delete expired keyword filter logs: %w", err)
+WHERE id IN (
+  SELECT id FROM keyword_filter_logs WHERE created_at < $1 LIMIT $2
+)
+`, before, batchSize)
+		if err != nil {
+			return nil, fmt.Errorf("delete expired keyword filter logs: %w", err)
+		}
+		affected, _ := exec.RowsAffected()
+		result.Deleted += affected
+		if affected < batchSize {
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
 	}
-	result.Deleted, _ = exec.RowsAffected()
 	result.FinishedAt = time.Now()
 	return result, nil
 }

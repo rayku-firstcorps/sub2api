@@ -305,15 +305,27 @@
           <button type="button" class="btn btn-secondary" @click="importOpen = false">{{ t('common.close') }}</button>
         </template>
       </BaseDialog>
+
+      <ConfirmDialog
+        :show="deleteConfirm.show"
+        :title="t('common.delete')"
+        :message="kt('confirmDeleteRule')"
+        :confirm-text="t('common.delete')"
+        :cancel-text="t('common.cancel')"
+        danger
+        @confirm="confirmRemoveRule"
+        @cancel="deleteConfirm.show = false"
+      />
     </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
+import { computed, defineComponent, h, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -371,12 +383,6 @@ const maxRulesPerKind = 1000
 const selectedSegmentClass = 'bg-white text-gray-900 shadow-sm dark:bg-dark-800 dark:text-white'
 const mutedSegmentClass = 'text-gray-500 dark:text-gray-400'
 const regexFeatureChars = new Set(['\\', '[', ']', '(', ')', '{', '}', '.', '*', '+', '?', '|'])
-const regexValidationFallbacks: Record<string, string> = {
-  regexNameRequired: '正则规则名称不能为空。',
-  regexPatternRequired: '正则表达式不能为空。',
-  regexPatternTooLong: '正则表达式不能超过 512 个字符。',
-  regexPatternLiteral: '正则兜底规则必须包含正则语法，普通词条请添加到黑名单规则。',
-}
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -392,12 +398,14 @@ const testOpen = ref(false)
 const importOpen = ref(false)
 const importKind = ref<RuleKind>('keyword')
 const keywordTesting = ref(false)
+const deleteConfirm = reactive({ show: false, kind: '' as 'keyword' | 'whitelist' | 'regex', id: '' as string | number })
 const keywordTestText = ref('')
 const keywordTestResult = ref<KeywordFilterTestResponse | null>(null)
 const importSummary = ref<ImportSummary | null>(null)
 const groups = ref<AdminGroup[]>([])
 const keywordLogs = ref<KeywordFilterLog[]>([])
-
+let logsAbortController: AbortController | null = null
+let logsRequestSeq = 0
 const keywordForm = reactive({
   enabled: false,
   all_groups: true,
@@ -494,6 +502,71 @@ const filteredWhitelistRules = computed(() => filterRules(keywordForm.whitelist_
 const keywordPageRows = computed(() => paginateRows(filteredKeywordRules.value, keywordTable))
 const whitelistPageRows = computed(() => paginateRows(filteredWhitelistRules.value, whitelistTable))
 
+const WhitelistTargetSelect = defineComponent({
+  name: 'WhitelistTargetSelect',
+  props: ['modelValue', 'options'],
+  emits: ['update:modelValue'],
+  setup(props: { modelValue: string[]; options: SelectOption[] }, { emit }) {
+    const open = ref(false)
+    const wrapperRef = ref<HTMLElement | null>(null)
+    const isAll = computed(() => !props.modelValue || props.modelValue.length === 0 || props.modelValue.includes(''))
+    const selectedLabels = computed(() => {
+      if (isAll.value) {
+        const allOpt = props.options.find((o: SelectOption) => o.value === '')
+        return allOpt ? [allOpt.label] : [kt('whitelistTargetsAll')]
+      }
+      return props.modelValue.map((id: string) => {
+        const opt = props.options.find((o: SelectOption) => String(o.value) === id)
+        return opt ? opt.label : id
+      })
+    })
+    const toggle = (value: string) => {
+      if (value === '') {
+        emit('update:modelValue', [])
+        return
+      }
+      const current = (props.modelValue || []).filter((v: string) => v !== '')
+      const idx = current.indexOf(value)
+      if (idx >= 0) {
+        const next = [...current]
+        next.splice(idx, 1)
+        emit('update:modelValue', next.length > 0 ? next : [])
+      } else {
+        emit('update:modelValue', [...current, value])
+      }
+    }
+    const onClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.value && !wrapperRef.value.contains(e.target as Node)) {
+        open.value = false
+      }
+    }
+    onMounted(() => document.addEventListener('click', onClickOutside))
+    onUnmounted(() => document.removeEventListener('click', onClickOutside))
+    return () => h('div', { ref: (el: any) => { wrapperRef.value = el }, class: 'relative' }, [
+      h('div', {
+        class: 'input h-auto min-h-[36px] flex flex-wrap gap-1 items-center cursor-pointer px-2 py-1',
+        onClick: () => { open.value = !open.value },
+      }, selectedLabels.value.map((label: string) =>
+        h('span', { class: 'inline-flex items-center rounded bg-gray-100 dark:bg-dark-600 px-1.5 py-0.5 text-xs' }, label)
+      )),
+      open.value
+        ? h('div', { class: 'absolute z-50 mt-1 w-full rounded-md border border-gray-200 dark:border-dark-500 bg-white dark:bg-dark-700 shadow-lg max-h-48 overflow-y-auto' },
+          props.options.map((opt: SelectOption) =>
+            h('label', { class: 'flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-dark-600 cursor-pointer text-sm' }, [
+              h('input', {
+                type: 'checkbox',
+                class: 'h-3.5 w-3.5 rounded border-gray-300',
+                checked: opt.value === '' ? isAll.value : props.modelValue.includes(String(opt.value)),
+                onChange: () => toggle(String(opt.value)),
+              }),
+              h('span', { class: 'truncate' }, opt.label),
+            ])
+          ))
+        : null,
+    ])
+  },
+})
+
 const RuleTable = defineComponent({
   name: 'KeywordRuleTable',
   props: ['kind', 'title', 'emptyText', 'rows', 'total', 'page', 'pageSize', 'search', 'mode', 'enabledFilter', 'matchModeOptions', 'targetOptions', 'refreshing'],
@@ -589,13 +662,11 @@ const RuleTable = defineComponent({
               ]),
               props.kind === 'whitelist'
                 ? h('td', { class: 'min-w-[240px] px-3 py-3' }, [
-                  h(Select, {
-                    modelValue: ((rule as KeywordFilterWhitelistRule).target_rule_ids[0] || ''),
+                  h(WhitelistTargetSelect, {
+                    modelValue: (rule as KeywordFilterWhitelistRule).target_rule_ids,
                     options: props.targetOptions || [],
-                    searchable: true,
-                    'onUpdate:modelValue': (value: string | number | boolean | null) => {
-                      const target = String(value || '')
-                      ;(rule as KeywordFilterWhitelistRule).target_rule_ids = target ? [target] : []
+                    'onUpdate:modelValue': (value: string[]) => {
+                      ;(rule as KeywordFilterWhitelistRule).target_rule_ids = value
                     },
                   }),
                 ])
@@ -709,6 +780,12 @@ async function loadGroups(options: { silent?: boolean } = {}) {
 }
 
 async function loadLogs() {
+  if (logsAbortController) {
+    logsAbortController.abort()
+  }
+  logsAbortController = new AbortController()
+  const signal = logsAbortController.signal
+  const seq = ++logsRequestSeq
   logsLoading.value = true
   try {
     const result = await adminAPI.riskControl.listKeywordFilterLogs({
@@ -720,16 +797,21 @@ async function loadLogs() {
       search: logFilters.search || undefined,
       from: normalizeDateTimeLocal(logFilters.from),
       to: normalizeDateTimeLocal(logFilters.to),
-    })
+    }, signal)
+    if (seq !== logsRequestSeq) return
     keywordLogs.value = result.items
     logPagination.total = result.total
     logPagination.page = result.page
     logPagination.page_size = result.page_size
     logPagination.pages = result.pages
   } catch (err: unknown) {
+    if (err instanceof Error && (err.name === 'CanceledError' || err.name === 'AbortError' || (err as any).code === 'ERR_CANCELED')) return
+    if (seq !== logsRequestSeq) return
     appStore.showError(extractApiErrorMessage(err, kt('logsFailed')))
   } finally {
-    logsLoading.value = false
+    if (seq === logsRequestSeq) {
+      logsLoading.value = false
+    }
   }
 }
 
@@ -799,7 +881,35 @@ function addKeywordRegexRule() {
 }
 
 function removeKeywordRegexRule(index: number) {
-  keywordForm.regex_rules.splice(index, 1)
+  deleteConfirm.show = true
+  deleteConfirm.kind = 'regex'
+  deleteConfirm.id = index
+}
+
+function removeKeywordRule(ruleID: string) {
+  deleteConfirm.show = true
+  deleteConfirm.kind = 'keyword'
+  deleteConfirm.id = ruleID
+}
+
+function removeWhitelistRule(ruleID: string) {
+  deleteConfirm.show = true
+  deleteConfirm.kind = 'whitelist'
+  deleteConfirm.id = ruleID
+}
+
+function confirmRemoveRule() {
+  if (deleteConfirm.kind === 'regex') {
+    keywordForm.regex_rules.splice(deleteConfirm.id as number, 1)
+  } else if (deleteConfirm.kind === 'keyword') {
+    keywordForm.keyword_rules = keywordForm.keyword_rules.filter((rule) => rule.id !== deleteConfirm.id)
+    cleanupKeywordWhitelistTargets()
+    clampRuleTablePage(keywordTable, filteredKeywordRules.value.length)
+  } else if (deleteConfirm.kind === 'whitelist') {
+    keywordForm.whitelist_rules = keywordForm.whitelist_rules.filter((rule) => rule.id !== deleteConfirm.id)
+    clampRuleTablePage(whitelistTable, filteredWhitelistRules.value.length)
+  }
+  deleteConfirm.show = false
 }
 
 function addKeywordRule() {
@@ -810,17 +920,6 @@ function addKeywordRule() {
 function addWhitelistRule() {
   keywordForm.whitelist_rules.unshift(createWhitelistRule(''))
   whitelistTable.page = 1
-}
-
-function removeKeywordRule(ruleID: string) {
-  keywordForm.keyword_rules = keywordForm.keyword_rules.filter((rule) => rule.id !== ruleID)
-  cleanupKeywordWhitelistTargets()
-  clampRuleTablePage(keywordTable, filteredKeywordRules.value.length)
-}
-
-function removeWhitelistRule(ruleID: string) {
-  keywordForm.whitelist_rules = keywordForm.whitelist_rules.filter((rule) => rule.id !== ruleID)
-  clampRuleTablePage(whitelistTable, filteredWhitelistRules.value.length)
 }
 
 function toggleKeywordGroup(groupID: number) {
@@ -905,9 +1004,10 @@ async function handleImportFile(event: Event) {
   if (!file) return
   try {
     const text = await file.text()
+    const defaultKind = importKind.value
     const result = file.name.toLowerCase().endsWith('.json')
-      ? importJSON(text)
-      : importCSV(text)
+      ? importJSON(text, defaultKind)
+      : importCSV(text, defaultKind)
     importSummary.value = result
     appStore.showSuccess(result.message)
   } catch (err: unknown) {
@@ -917,7 +1017,7 @@ async function handleImportFile(event: Event) {
   }
 }
 
-function importCSV(text: string): ImportSummary {
+function importCSV(text: string, defaultKind: RuleKind): ImportSummary {
   const rows = parseCSV(text)
   if (rows.length === 0) return { message: t('admin.keywordFilter.importEmpty'), errors: [] }
   const headers = rows[0].map((item) => item.trim().toLowerCase())
@@ -931,7 +1031,7 @@ function importCSV(text: string): ImportSummary {
     if (hasHeader) {
       const value = (name: string) => row[headers.indexOf(name)] || ''
       imported.push({
-        type: normalizeImportType(value('type'), 'keyword'),
+        type: normalizeImportType(value('type'), defaultKind),
         pattern: value('pattern'),
         match_mode: normalizeMatchMode(value('match_mode')),
         raw_match_mode: value('match_mode'),
@@ -941,7 +1041,7 @@ function importCSV(text: string): ImportSummary {
       })
     } else {
       imported.push({
-        type: 'keyword',
+        type: defaultKind,
         pattern: row[0] || '',
         match_mode: 'auto',
         enabled: true,
@@ -954,13 +1054,13 @@ function importCSV(text: string): ImportSummary {
   return mergeImportedRules(imported, errors)
 }
 
-function importJSON(text: string): ImportSummary {
+function importJSON(text: string, defaultKind: RuleKind): ImportSummary {
   const parsed = JSON.parse(text) as unknown
   const imported: ImportedRule[] = []
   const errors: string[] = []
   if (Array.isArray(parsed)) {
     parsed.forEach((value, index) => {
-      imported.push({ type: 'keyword', pattern: String(value || ''), match_mode: 'auto', enabled: true, target_patterns: [], line: index + 1 })
+      imported.push({ type: defaultKind, pattern: String(value || ''), match_mode: 'auto', enabled: true, target_patterns: [], line: index + 1 })
     })
   } else if (parsed && typeof parsed === 'object') {
     const obj = parsed as {
@@ -1161,8 +1261,7 @@ function regexPatternHasFeature(pattern: string): boolean {
 }
 
 function keywordRegexValidationMessage(key: string): string {
-  const value = kt(key)
-  return value === `admin.keywordFilter.${key}` ? regexValidationFallbacks[key] || value : value
+  return kt(key)
 }
 
 function sanitizeKeywordRules(rules: KeywordFilterRule[]): KeywordFilterRule[] {
@@ -1302,5 +1401,11 @@ function kt(key: string): string {
 
 onMounted(() => {
   void loadAll()
+})
+
+onUnmounted(() => {
+  if (logsAbortController) {
+    logsAbortController.abort()
+  }
 })
 </script>
