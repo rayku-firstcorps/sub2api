@@ -267,9 +267,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	// omits "model" — Realtime clients are allowed to send response.create
 	// without re-stating the model, in which case the upstream uses the model
 	// negotiated at session.update time. Without this fallback, an empty
-	// model would miss the default ["gpt-5.5","gpt-5.5*"] whitelist and be
-	// silently passed through, defeating the policy on every frame after
-	// the first.
+	// model would miss any admin-configured model whitelist and be silently
+	// passed through, defeating that policy on every frame after the first.
 	capturedSessionModel := openAIWSPassthroughPolicyModelForFrame(account, firstClientMessage)
 	initialRequestModel := ""
 	if hooks != nil {
@@ -281,6 +280,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return fmt.Errorf("apply openai fast policy on first ws frame: %w", policyErr)
 	}
 	if blocked != nil {
+		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
 		// coder/websocket@v1.8.14 Conn.Write is synchronous: it acquires
 		// writeFrameMu, writes the entire frame, and Flushes the underlying
 		// bufio writer before returning (write.go:42 → write.go:307-311).
@@ -443,6 +443,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			return out, blocked, policyErr
 		},
 		onBlock: func(blocked *OpenAIFastBlockedError) {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
 			// See note above on Conn.Write being synchronous w.r.t. flush;
 			// no explicit flush is required to ensure the error event lands
 			// before the close frame.

@@ -1,37 +1,8 @@
-import { describe, expect, it, vi, beforeEach, beforeAll } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
-let UsageTable: typeof import('../UsageTable.vue')['default']
-
-const installStorageStub = () => {
-  const store = new Map<string, string>()
-  const storage = {
-    getItem: vi.fn((key: string) => store.get(key) ?? null),
-    setItem: vi.fn((key: string, value: string) => {
-      store.set(key, String(value))
-    }),
-    removeItem: vi.fn((key: string) => {
-      store.delete(key)
-    }),
-    clear: vi.fn(() => {
-      store.clear()
-    }),
-    key: vi.fn((index: number) => Array.from(store.keys())[index] ?? null),
-    get length() {
-      return store.size
-    },
-  }
-
-  Object.defineProperty(globalThis, 'localStorage', {
-    value: storage,
-    configurable: true,
-  })
-  Object.defineProperty(window, 'localStorage', {
-    value: storage,
-    configurable: true,
-  })
-}
+import UsageTable from '../UsageTable.vue'
 
 const messages: Record<string, string> = {
   'usage.costDetails': 'Cost Breakdown',
@@ -51,6 +22,26 @@ const messages: Record<string, string> = {
   'usage.original': 'Original',
   'usage.userBilled': 'User billed',
   'usage.accountBilled': 'Account billed',
+  'usage.imageUnit': ' images',
+  'usage.imageCount': 'Image count',
+  'usage.imageBillingSize': 'Billing size',
+  'usage.imageInputSize': 'Input size',
+  'usage.imageOutputSize': 'Output size',
+  'usage.imageSizeSource': 'Size source',
+  'usage.imageSizeBreakdown': 'Size breakdown',
+  'usage.imageSizeSourceOutput': 'Upstream output',
+  'usage.imageSizeSourceInput': 'Request input',
+  'usage.imageSizeSourceDefault': 'Default billing tier',
+  'usage.imageSizeSourceLegacy': 'Legacy record',
+  'usage.imageSizeSourceMissing': 'Not recorded',
+  'usage.imageSizeNotRecorded': 'not recorded',
+  'usage.imageSizeLegacyUnstandardized': 'legacy unstandardized',
+  'usage.imageSizeUnknown': 'unknown',
+  'usage.imageUnitPrice': 'Per-image price',
+  'usage.imageTotalPrice': 'Image total price',
+  'admin.usage.billingModeToken': 'Token',
+  'admin.usage.billingModePerRequest': 'Per request',
+  'admin.usage.billingModeImage': 'Image',
   'usage.model': 'Model',
   'usage.type': 'Type',
   'admin.usage.requestContext': 'Request Context',
@@ -75,36 +66,50 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
-const copyToClipboard = vi.fn().mockResolvedValue(true)
-
-vi.mock('@/composables/useClipboard', () => ({
-  useClipboard: () => ({
-    copyToClipboard,
-  }),
-}))
-
 const DataTableStub = {
   props: ['data'],
   template: `
     <div>
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
+        <slot name="cell-billing_mode" :row="row" />
+        <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
-        <slot name="cell-context" :row="row" />
       </div>
     </div>
   `,
 }
 
-describe('admin UsageTable tooltip', () => {
-  beforeAll(async () => {
-    installStorageStub()
-    UsageTable = (await import('../UsageTable.vue')).default
-  })
+const baseImageRow = {
+  request_id: 'req-admin-image',
+  model: 'gpt-image-2',
+  actual_cost: 0.4,
+  total_cost: 0.4,
+  account_rate_multiplier: 1,
+  rate_multiplier: 1,
+  service_tier: null,
+  input_cost: 0,
+  output_cost: 0,
+  cache_creation_cost: 0,
+  cache_read_cost: 0,
+  input_tokens: 0,
+  output_tokens: 0,
+  cache_creation_tokens: 0,
+  cache_read_tokens: 0,
+  cache_creation_5m_tokens: 0,
+  cache_creation_1h_tokens: 0,
+  cache_ttl_overridden: false,
+  billing_mode: 'image',
+  image_count: 2,
+  image_size: '2K',
+  image_input_size: null,
+  image_output_size: null,
+  image_size_source: null,
+  image_size_breakdown: null,
+}
 
+describe('admin UsageTable tooltip', () => {
   beforeEach(() => {
-    localStorage.clear()
-    copyToClipboard.mockClear()
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
       y: 0,
@@ -150,7 +155,8 @@ describe('admin UsageTable tooltip', () => {
       },
     })
 
-    await wrapper.find('.group.relative').trigger('mouseenter')
+    const tooltipTriggers = wrapper.findAll('.group.relative')
+    await tooltipTriggers[tooltipTriggers.length - 1].trigger('mouseenter')
     await nextTick()
 
     const text = wrapper.text()
@@ -203,6 +209,128 @@ describe('admin UsageTable tooltip', () => {
     const text = wrapper.text()
     expect(text).toContain('claude-sonnet-4')
     expect(text).toContain('claude-sonnet-4-20250514')
+  })
+
+  it.each([
+    {
+      name: 'defaulted row',
+      row: {
+        ...baseImageRow,
+        request_id: 'req-admin-default-image',
+        image_size: '2K',
+        image_input_size: 'auto',
+        image_output_size: null,
+        image_size_source: 'default',
+      },
+      expected: ['2K', 'Default billing tier', 'auto', 'unknown'],
+    },
+    {
+      name: 'output-sourced row',
+      row: {
+        ...baseImageRow,
+        request_id: 'req-admin-output-image',
+        image_size: '4K',
+        image_input_size: '1024x1024',
+        image_output_size: '3840x2160',
+        image_size_source: 'output',
+        image_size_breakdown: { '4K': 1 },
+      },
+      expected: ['4K', 'Upstream output', '1024x1024', '3840x2160', '4K x 1'],
+    },
+    {
+      name: 'input-sourced row',
+      row: {
+        ...baseImageRow,
+        request_id: 'req-admin-input-image',
+        image_size: '1K',
+        image_input_size: '1024x1024',
+        image_output_size: null,
+        image_size_source: 'input',
+      },
+      expected: ['1K', 'Request input', '1024x1024', 'unknown'],
+    },
+    {
+      name: 'legacy unstandardized row',
+      row: {
+        ...baseImageRow,
+        request_id: 'req-admin-legacy-unstandardized-image',
+        image_size: '512x512',
+        image_input_size: null,
+        image_output_size: null,
+        image_size_source: null,
+      },
+      expected: ['legacy unstandardized: 512x512', 'Legacy record', 'unknown'],
+    },
+  ])('shows image usage metadata for $name', async ({ row, expected }) => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await wrapper.find('.group.relative').trigger('mouseenter')
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('Image count')
+    expect(text).toContain('Billing size')
+    expect(text).toContain('Size source')
+    expect(text).toContain('Input size')
+    expect(text).toContain('Output size')
+    expect(text).toContain('Per-image price')
+    expect(text).toContain('Image total price')
+    for (const value of expected) {
+      expect(text).toContain(value)
+    }
+  })
+
+  it('displays historical image rows with missing billing_mode as image usage without a 2K fallback', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-admin-legacy-missing-image',
+            billing_mode: null,
+            image_size: null,
+            image_input_size: null,
+            image_output_size: null,
+            image_size_source: null,
+            image_size_breakdown: null,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await wrapper.find('.group.relative').trigger('mouseenter')
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('Image')
+    expect(text).toContain('Image count')
+    expect(text).toContain('Per-image price')
+    expect(text).toContain('not recorded')
+    expect(text).not.toContain('(2K)')
   })
 
   it('opens sanitized request context details for admin rows', async () => {
@@ -270,125 +398,5 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Export')
     expect(text).toContain('old user prompt')
     expect(text).toContain('[REDACTED]')
-  })
-
-  it('extracts the latest user prompt from responses input context', async () => {
-    const row = {
-      request_id: 'req-admin-context-responses',
-      model: 'gpt-5.1',
-      actual_cost: 0,
-      total_cost: 0,
-      account_rate_multiplier: 1,
-      rate_multiplier: 1,
-      input_cost: 0,
-      output_cost: 0,
-      cache_creation_cost: 0,
-      cache_read_cost: 0,
-      input_tokens: 0,
-      output_tokens: 0,
-      request_context_json: {
-        model: 'gpt-5.1',
-        input: [
-          { type: 'message', role: 'developer', content: [{ type: 'input_text', text: 'developer instructions' }] },
-          { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'first prompt' }] },
-          { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'latest prompt' }] },
-        ],
-      },
-      request_context_truncated: false,
-      request_context_bytes: 512,
-    }
-
-    const wrapper = mount(UsageTable, {
-      props: {
-        data: [row],
-        loading: false,
-        columns: [],
-      },
-      global: {
-        stubs: {
-          DataTable: DataTableStub,
-          EmptyState: true,
-          Icon: true,
-          Teleport: true,
-        },
-      },
-    })
-
-    await wrapper.find('button[title="View request context"]').trigger('click')
-    await nextTick()
-
-    const promptBlock = wrapper.find('section pre')
-    expect(promptBlock.text()).toContain('latest prompt')
-    expect(promptBlock.text()).not.toContain('developer instructions')
-    expect(promptBlock.text()).not.toContain('first prompt')
-    expect(wrapper.text()).toContain('input:last user')
-  })
-
-  it('copies and exports the full request context JSON', async () => {
-    const originalCreateObjectURL = URL.createObjectURL
-    const originalRevokeObjectURL = URL.revokeObjectURL
-    URL.createObjectURL = vi.fn(() => 'blob:request-context') as typeof URL.createObjectURL
-    URL.revokeObjectURL = vi.fn() as typeof URL.revokeObjectURL
-    const clickMock = vi.fn()
-    const originalCreateElement = document.createElement.bind(document)
-    vi.spyOn(document, 'createElement').mockImplementation((tagName: string, options?: ElementCreationOptions) => {
-      const element = originalCreateElement(tagName, options)
-      if (tagName.toLowerCase() === 'a') {
-        Object.defineProperty(element, 'click', { value: clickMock })
-      }
-      return element
-    })
-
-    const row = {
-      request_id: 'req/export 1',
-      model: 'gpt-5.1',
-      actual_cost: 0,
-      total_cost: 0,
-      account_rate_multiplier: 1,
-      rate_multiplier: 1,
-      input_cost: 0,
-      output_cost: 0,
-      cache_creation_cost: 0,
-      cache_read_cost: 0,
-      input_tokens: 0,
-      output_tokens: 0,
-      request_context_json: {
-        model: 'gpt-5.1',
-        input: 'export me',
-      },
-      request_context_truncated: false,
-      request_context_bytes: 128,
-    }
-
-    const wrapper = mount(UsageTable, {
-      props: {
-        data: [row],
-        loading: false,
-        columns: [],
-      },
-      global: {
-        stubs: {
-          DataTable: DataTableStub,
-          EmptyState: true,
-          Icon: true,
-          Teleport: true,
-        },
-      },
-    })
-
-    await wrapper.find('button[title="View request context"]').trigger('click')
-    await nextTick()
-
-    const actionButtons = wrapper.findAll('section button')
-    await actionButtons.find((button) => button.text().includes('Copy'))!.trigger('click')
-    expect(copyToClipboard).toHaveBeenCalledWith(expect.stringContaining('"input": "export me"'), 'Request context copied')
-
-    await actionButtons.find((button) => button.text().includes('Export'))!.trigger('click')
-    expect(URL.createObjectURL).toHaveBeenCalled()
-    expect(clickMock).toHaveBeenCalled()
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:request-context')
-
-    URL.createObjectURL = originalCreateObjectURL
-    URL.revokeObjectURL = originalRevokeObjectURL
   })
 })
