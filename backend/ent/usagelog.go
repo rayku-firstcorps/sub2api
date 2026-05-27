@@ -89,6 +89,12 @@ type UsageLog struct {
 	UserAgent *string `json:"user_agent,omitempty"`
 	// IPAddress holds the value of the "ip_address" field.
 	IPAddress *string `json:"ip_address,omitempty"`
+	// sanitized request context snapshot
+	RequestContextJSON map[string]interface{} `json:"request_context_json,omitempty"`
+	// request context snapshot was truncated
+	RequestContextTruncated bool `json:"request_context_truncated,omitempty"`
+	// original request body size in bytes
+	RequestContextBytes *int `json:"request_context_bytes,omitempty"`
 	// ImageCount holds the value of the "image_count" field.
 	ImageCount int `json:"image_count,omitempty"`
 	// ImageSize holds the value of the "image_size" field.
@@ -188,13 +194,13 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case usagelog.FieldImageSizeBreakdown:
+		case usagelog.FieldRequestContextJSON, usagelog.FieldImageSizeBreakdown:
 			values[i] = new([]byte)
-		case usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
+		case usagelog.FieldStream, usagelog.FieldRequestContextTruncated, usagelog.FieldCacheTTLOverridden:
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
+		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldRequestContextBytes, usagelog.FieldImageCount:
 			values[i] = new(sql.NullInt64)
 		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource:
 			values[i] = new(sql.NullString)
@@ -431,6 +437,27 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.IPAddress = new(string)
 				*_m.IPAddress = value.String
+			}
+		case usagelog.FieldRequestContextJSON:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field request_context_json", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.RequestContextJSON); err != nil {
+					return fmt.Errorf("unmarshal field request_context_json: %w", err)
+				}
+			}
+		case usagelog.FieldRequestContextTruncated:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field request_context_truncated", values[i])
+			} else if value.Valid {
+				_m.RequestContextTruncated = value.Bool
+			}
+		case usagelog.FieldRequestContextBytes:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field request_context_bytes", values[i])
+			} else if value.Valid {
+				_m.RequestContextBytes = new(int)
+				*_m.RequestContextBytes = int(value.Int64)
 			}
 		case usagelog.FieldImageCount:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -670,6 +697,17 @@ func (_m *UsageLog) String() string {
 	if v := _m.IPAddress; v != nil {
 		builder.WriteString("ip_address=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("request_context_json=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RequestContextJSON))
+	builder.WriteString(", ")
+	builder.WriteString("request_context_truncated=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RequestContextTruncated))
+	builder.WriteString(", ")
+	if v := _m.RequestContextBytes; v != nil {
+		builder.WriteString("request_context_bytes=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
 	builder.WriteString("image_count=")

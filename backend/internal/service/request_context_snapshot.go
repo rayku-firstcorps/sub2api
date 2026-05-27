@@ -2,6 +2,9 @@ package service
 
 const usageLogRequestContextMaxBytes = 256 * 1024
 
+// sanitizeAndTrimRequestBody sanitizes and trims a raw request body for usage log storage.
+var sanitizeAndTrimRequestBody = sanitizeAndTrimJSONPayload
+
 // PrepareUsageLogRequestContext returns a sanitized, bounded JSON snapshot of
 // the request body for usage log inspection. Invalid or empty JSON is skipped.
 func PrepareUsageLogRequestContext(raw []byte) (jsonString *string, truncated bool, bytesLen *int) {
