@@ -2913,6 +2913,9 @@ func sameAccountWithLoadGroup(a, b accountWithLoad) bool {
 	if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 		return false
 	}
+	if a.loadInfo.WaitingCount != b.loadInfo.WaitingCount {
+		return false
+	}
 	return sameLastUsedAt(a.account.LastUsedAt, b.account.LastUsedAt)
 }
 

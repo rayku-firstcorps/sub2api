@@ -1746,6 +1746,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 				return a.loadInfo.LoadRate < b.loadInfo.LoadRate
 			}
+			if a.loadInfo.WaitingCount != b.loadInfo.WaitingCount {
+				return a.loadInfo.WaitingCount < b.loadInfo.WaitingCount
+			}
 			switch {
 			case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
 				return true

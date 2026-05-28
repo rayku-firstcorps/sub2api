@@ -733,6 +733,40 @@ func TestOpenAISelectAccountWithLoadAwareness_PrefersLowerLoad(t *testing.T) {
 	}
 }
 
+func TestOpenAISelectAccountWithLoadAwareness_PrefersLowerWaitingCountWhenLoadTies(t *testing.T) {
+	groupID := int64(1)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
+			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
+		},
+	}
+	cache := &stubGatewayCache{}
+	concurrencyCache := stubConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			1: {AccountID: 1, LoadRate: 10, WaitingCount: 5},
+			2: {AccountID: 2, LoadRate: 10, WaitingCount: 0},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        repo,
+		cache:              cache,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "queue", "gpt-4", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountWithLoadAwareness error: %v", err)
+	}
+	if selection == nil || selection.Account == nil || selection.Account.ID != 2 {
+		t.Fatalf("expected account 2")
+	}
+	if cache.sessionBindings["openai:queue"] != 2 {
+		t.Fatalf("expected sticky session updated")
+	}
+}
+
 func TestOpenAISelectAccountForModelWithExclusions_StickyExcludedFallback(t *testing.T) {
 	sessionHash := "excluded"
 	repo := stubOpenAIAccountRepo{
