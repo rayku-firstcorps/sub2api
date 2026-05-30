@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import { createPinia } from 'pinia'
 
 import UsageTable from '../UsageTable.vue'
 
@@ -75,10 +76,24 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-context" :row="row" />
       </div>
     </div>
   `,
 }
+
+const mountUsageTable = (props: Record<string, unknown>) => mount(UsageTable, {
+  props,
+  global: {
+    plugins: [createPinia()],
+    stubs: {
+      DataTable: DataTableStub,
+      EmptyState: true,
+      Icon: true,
+      Teleport: true,
+    },
+  },
+})
 
 const baseImageRow = {
   request_id: 'req-admin-image',
@@ -139,20 +154,10 @@ describe('admin UsageTable tooltip', () => {
       output_tokens: 101,
     }
 
-    const wrapper = mount(UsageTable, {
-      props: {
-        data: [row],
-        loading: false,
-        columns: [],
-      },
-      global: {
-        stubs: {
-          DataTable: DataTableStub,
-          EmptyState: true,
-          Icon: true,
-          Teleport: true,
-        },
-      },
+    const wrapper = mountUsageTable({
+      data: [row],
+      loading: false,
+      columns: [],
     })
 
     const tooltipTriggers = wrapper.findAll('.group.relative')
@@ -190,20 +195,10 @@ describe('admin UsageTable tooltip', () => {
       output_tokens: 0,
     }
 
-    const wrapper = mount(UsageTable, {
-      props: {
-        data: [row],
-        loading: false,
-        columns: [],
-      },
-      global: {
-        stubs: {
-          DataTable: DataTableStub,
-          EmptyState: true,
-          Icon: true,
-          Teleport: true,
-        },
-      },
+    const wrapper = mountUsageTable({
+      data: [row],
+      loading: false,
+      columns: [],
     })
 
     const text = wrapper.text()
@@ -262,20 +257,10 @@ describe('admin UsageTable tooltip', () => {
       expected: ['legacy unstandardized: 512x512', 'Legacy record', 'unknown'],
     },
   ])('shows image usage metadata for $name', async ({ row, expected }) => {
-    const wrapper = mount(UsageTable, {
-      props: {
-        data: [row],
-        loading: false,
-        columns: [],
-      },
-      global: {
-        stubs: {
-          DataTable: DataTableStub,
-          EmptyState: true,
-          Icon: true,
-          Teleport: true,
-        },
-      },
+    const wrapper = mountUsageTable({
+      data: [row],
+      loading: false,
+      columns: [],
     })
 
     await wrapper.find('.group.relative').trigger('mouseenter')
@@ -295,31 +280,21 @@ describe('admin UsageTable tooltip', () => {
   })
 
   it('displays historical image rows with missing billing_mode as image usage without a 2K fallback', async () => {
-    const wrapper = mount(UsageTable, {
-      props: {
-        data: [
-          {
-            ...baseImageRow,
-            request_id: 'req-admin-legacy-missing-image',
-            billing_mode: null,
-            image_size: null,
-            image_input_size: null,
-            image_output_size: null,
-            image_size_source: null,
-            image_size_breakdown: null,
-          },
-        ],
-        loading: false,
-        columns: [],
-      },
-      global: {
-        stubs: {
-          DataTable: DataTableStub,
-          EmptyState: true,
-          Icon: true,
-          Teleport: true,
+    const wrapper = mountUsageTable({
+      data: [
+        {
+          ...baseImageRow,
+          request_id: 'req-admin-legacy-missing-image',
+          billing_mode: null,
+          image_size: null,
+          image_input_size: null,
+          image_output_size: null,
+          image_size_source: null,
+          image_size_breakdown: null,
         },
-      },
+      ],
+      loading: false,
+      columns: [],
     })
 
     await wrapper.find('.group.relative').trigger('mouseenter')
@@ -361,20 +336,10 @@ describe('admin UsageTable tooltip', () => {
       request_context_bytes: 2048,
     }
 
-    const wrapper = mount(UsageTable, {
-      props: {
-        data: [row],
-        loading: false,
-        columns: [],
-      },
-      global: {
-        stubs: {
-          DataTable: DataTableStub,
-          EmptyState: true,
-          Icon: true,
-          Teleport: true,
-        },
-      },
+    const wrapper = mountUsageTable({
+      data: [row],
+      loading: false,
+      columns: [],
     })
 
     const contextButton = wrapper.find('button[title="View request context"]')

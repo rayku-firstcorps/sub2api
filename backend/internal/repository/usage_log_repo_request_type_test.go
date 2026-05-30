@@ -646,6 +646,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullFloat64{},
+			sql.NullString{},
+			false,
+			sql.NullInt64{},
 			now,
 		}})
 		require.NoError(t, err)
