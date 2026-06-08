@@ -529,7 +529,7 @@ func TestGatewayServiceForwardCountTokensKiroUsesLocalEstimate(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	svc := &GatewayService{}
 	body := []byte(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hello"}]}`)
-	parsed := &ParsedRequest{Model: "claude-sonnet-4-5", Body: body}
+	parsed := &ParsedRequest{Model: "claude-sonnet-4-5", Body: NewRequestBodyRef(body)}
 	account := &Account{ID: 1, Platform: PlatformKiro, Type: AccountTypeOAuth}
 
 	err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
