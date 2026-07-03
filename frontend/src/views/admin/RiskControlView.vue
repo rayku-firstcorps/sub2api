@@ -317,6 +317,9 @@
                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
                       <div>{{ row.highest_category || '-' }}</div>
                       <div class="text-xs text-gray-400">{{ percent(row.highest_score) }}</div>
+                      <div v-if="row.matched_keyword" class="mt-0.5 text-xs font-medium text-red-600 dark:text-red-300" :title="t('admin.riskControl.matchedKeyword') + ': ' + row.matched_keyword">
+                        {{ t('admin.riskControl.matchedKeyword') }}: {{ row.matched_keyword }}
+                      </div>
                     </td>
                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
                       <div>{{ violationCountText(row) }}</div>
@@ -881,6 +884,13 @@
                 </div>
                 <Toggle v-model="configForm.auto_ban_enabled" />
               </div>
+              <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700 lg:col-span-2">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberPolicyExcludeBan') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberPolicyExcludeBanHint') }}</p>
+                </div>
+                <Toggle v-model="configForm.cyber_policy_exclude_from_ban_count" />
+              </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.banThreshold') }}</label>
                 <input v-model.number="configForm.ban_threshold" type="number" min="1" max="1000" class="input" />
@@ -1071,6 +1081,10 @@
                 {{ inputDetailRow.highest_category || '-' }} / {{ percent(inputDetailRow.highest_score) }}
               </p>
             </div>
+            <div v-if="inputDetailRow.matched_keyword" class="rounded-lg border border-red-100 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-900/20">
+              <p class="text-xs font-medium text-red-500 dark:text-red-300">{{ t('admin.riskControl.matchedKeyword') }}</p>
+              <p class="mt-1 truncate text-sm font-semibold text-red-700 dark:text-red-200" :title="inputDetailRow.matched_keyword">{{ inputDetailRow.matched_keyword }}</p>
+            </div>
           </div>
 
           <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
@@ -1157,7 +1171,6 @@ type RiskThresholdRow = {
 const maxModerationTestImages = 1
 const maxModerationTestImageSize = 8 * 1024 * 1024
 const maxVisibleApiKeyRows: number = 3
-const defaultContentModerationBlockMessage = '内容审计命中风险规则，请调整输入后重试'
 const blockedKeywordMax = 10000
 const riskThresholdDefaults: Record<string, number> = {
   harassment: 98,
@@ -1178,6 +1191,7 @@ const riskThresholdCategories = Object.keys(riskThresholdDefaults)
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const defaultBlockMessage = () => t('admin.riskControl.defaultBlockMessage')
 
 const loading = ref(true)
 const saving = ref(false)
@@ -1226,9 +1240,10 @@ const configForm = reactive({
   worker_count: 4,
   queue_size: 32768,
   block_status: 403,
-  block_message: defaultContentModerationBlockMessage,
+  block_message: defaultBlockMessage(),
   email_on_hit: true,
   auto_ban_enabled: true,
+  cyber_policy_exclude_from_ban_count: false,
   ban_threshold: 10,
   violation_window_hours: 720,
   hit_retention_days: 180,
@@ -1708,9 +1723,10 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.worker_count = config.worker_count || 4
   configForm.queue_size = config.queue_size || 32768
   configForm.block_status = config.block_status || 403
-  configForm.block_message = config.block_message || defaultContentModerationBlockMessage
+  configForm.block_message = config.block_message || defaultBlockMessage()
   configForm.email_on_hit = config.email_on_hit ?? true
   configForm.auto_ban_enabled = config.auto_ban_enabled ?? true
+  configForm.cyber_policy_exclude_from_ban_count = config.cyber_policy_exclude_from_ban_count ?? false
   configForm.ban_threshold = config.ban_threshold || 10
   configForm.violation_window_hours = config.violation_window_hours || 720
   configForm.hit_retention_days = config.hit_retention_days || 180
@@ -1802,9 +1818,10 @@ async function saveConfig() {
       worker_count: Number(configForm.worker_count) || 4,
       queue_size: Number(configForm.queue_size) || 32768,
       block_status: Number(configForm.block_status) || 403,
-      block_message: configForm.block_message || defaultContentModerationBlockMessage,
+      block_message: configForm.block_message || defaultBlockMessage(),
       email_on_hit: configForm.email_on_hit,
       auto_ban_enabled: configForm.auto_ban_enabled,
+      cyber_policy_exclude_from_ban_count: configForm.cyber_policy_exclude_from_ban_count,
       ban_threshold: Number(configForm.ban_threshold) || 10,
       violation_window_hours: Number(configForm.violation_window_hours) || 720,
       hit_retention_days: Number(configForm.hit_retention_days) || 180,
@@ -2120,6 +2137,7 @@ function modeDescription(mode: ModerationMode): string {
 }
 
 function resultLabel(row: ContentModerationLog): string {
+  if (row.action === 'cyber_policy') return t('admin.riskControl.action.cyberPolicy')
   if (row.action === 'keyword_block') return t('admin.riskControl.action.keywordBlock')
   if (row.action === 'block') return t('admin.riskControl.action.block')
   if (row.action === 'error' || row.error) return t('admin.riskControl.action.error')
@@ -2128,7 +2146,7 @@ function resultLabel(row: ContentModerationLog): string {
 }
 
 function resultBadgeClass(row: ContentModerationLog): string {
-  if (row.action === 'block' || row.action === 'keyword_block') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+  if (row.action === 'block' || row.action === 'keyword_block' || row.action === 'cyber_policy') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
   if (row.action === 'error' || row.error) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
   if (row.flagged) return 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300'
   return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
@@ -2326,6 +2344,7 @@ function parseBlockedKeywords(value: string): string[] {
 
 function violationCountText(row: ContentModerationLog): string {
   if (!row.flagged) return '-'
+  if (row.violation_count === 0) return t('admin.riskControl.violationNotCounted')
   return t('admin.riskControl.violationCount', { count: row.violation_count || 1 })
 }
 
