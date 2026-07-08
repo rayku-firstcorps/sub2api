@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # =============================================================================
 # Sub2API Multi-Stage Dockerfile
 # =============================================================================
@@ -10,29 +11,34 @@ ARG NODE_IMAGE=node:24-alpine
 ARG GOLANG_IMAGE=golang:1.26.4-alpine
 ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
-ARG GOPROXY=https://proxy.golang.org,direct
-ARG GOSUMDB=sum.golang.org
-ARG NPM_REGISTRY=https://registry.npmjs.org/
+ARG GOPROXY=https://goproxy.cn,direct
+ARG GOSUMDB=sum.golang.google.cn
+ARG NPM_CONFIG_REGISTRY=
 
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
 # -----------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS frontend-builder
-
-ARG NPM_REGISTRY
+ARG NPM_CONFIG_REGISTRY
 
 WORKDIR /app/frontend
 
 # Install pnpm. Keep this pinned to the lockfile-era major version; pnpm 11
 # fails this build unless dependency build scripts are explicitly approved.
-RUN npm config set registry "${NPM_REGISTRY}" && \
+RUN if [ -n "${NPM_CONFIG_REGISTRY}" ]; then npm config set registry "${NPM_CONFIG_REGISTRY}"; fi && \
     corepack enable && \
-    COREPACK_NPM_REGISTRY="${NPM_REGISTRY}" corepack prepare pnpm@9.15.9 --activate && \
-    pnpm config set registry "${NPM_REGISTRY}"
+    if [ -n "${NPM_CONFIG_REGISTRY}" ]; then \
+        COREPACK_NPM_REGISTRY="${NPM_CONFIG_REGISTRY}" corepack prepare pnpm@9.15.9 --activate; \
+    else \
+        corepack prepare pnpm@9.15.9 --activate; \
+    fi && \
+    if [ -n "${NPM_CONFIG_REGISTRY}" ]; then pnpm config set registry "${NPM_CONFIG_REGISTRY}"; fi
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=sub2api-pnpm-store,target=/root/.local/share/pnpm/store \
+    if [ -n "${NPM_CONFIG_REGISTRY}" ]; then pnpm config set registry "${NPM_CONFIG_REGISTRY}"; fi && \
+    pnpm install --frozen-lockfile --prefer-offline
 
 # Copy frontend source and build.
 # LegalDocumentView.vue (admin-compliance gate) build-time imports
