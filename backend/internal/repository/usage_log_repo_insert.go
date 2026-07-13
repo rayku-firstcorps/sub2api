@@ -63,6 +63,9 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // image_output_size
 	"text",        // image_size_source
 	"jsonb",       // image_size_breakdown
+	"integer",     // video_count
+	"text",        // video_resolution
+	"integer",     // video_duration_seconds
 	"text",        // service_tier
 	"text",        // reasoning_effort
 	"text",        // inbound_endpoint
@@ -255,6 +258,9 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -706,6 +712,9 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -790,6 +799,9 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				image_output_size,
 				image_size_source,
 				image_size_breakdown,
+				video_count,
+				video_resolution,
+				video_duration_seconds,
 				service_tier,
 				reasoning_effort,
 				inbound_endpoint,
@@ -845,6 +857,9 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				image_output_size,
 				image_size_source,
 				image_size_breakdown,
+				video_count,
+				video_resolution,
+				video_duration_seconds,
 				service_tier,
 				reasoning_effort,
 				inbound_endpoint,
@@ -940,6 +955,9 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1021,6 +1039,9 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1076,6 +1097,9 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1139,6 +1163,9 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			image_output_size,
 			image_size_source,
 			image_size_breakdown,
+			video_count,
+			video_resolution,
+			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1190,6 +1217,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	imageOutputSize := nullString(log.ImageOutputSize)
 	imageSizeSource := nullString(log.ImageSizeSource)
 	imageSizeBreakdown := nullStringIntMapJSON(log.ImageSizeBreakdown)
+	videoResolution := nullString(log.VideoResolution)
+	videoDurationSeconds := nullInt(log.VideoDurationSeconds)
 	serviceTier := nullString(log.ServiceTier)
 	reasoningEffort := nullString(log.ReasoningEffort)
 	inboundEndpoint := nullString(log.InboundEndpoint)
@@ -1254,6 +1283,9 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			imageOutputSize,
 			imageSizeSource,
 			imageSizeBreakdown,
+			log.VideoCount,
+			videoResolution,
+			videoDurationSeconds,
 			serviceTier,
 			reasoningEffort,
 			inboundEndpoint,
