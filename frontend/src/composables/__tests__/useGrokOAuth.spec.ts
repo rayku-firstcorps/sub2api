@@ -55,7 +55,7 @@ describe('useGrokOAuth.exchangeAuthCode', () => {
 })
 
 describe('useGrokOAuth.buildCredentials', () => {
-  it('persists the Grok CLI subscription proxy for OAuth inference', () => {
+  it('persists the official xAI API for OAuth inference', () => {
     const oauth = useGrokOAuth()
 
     const credentials = oauth.buildCredentials({
@@ -67,6 +67,6 @@ describe('useGrokOAuth.buildCredentials', () => {
       email: 'grok@example.com'
     })
 
-    expect(credentials.base_url).toBe('https://cli-chat-proxy.grok.com/v1')
+    expect(credentials.base_url).toBe('https://api.x.ai/v1')
   })
 })

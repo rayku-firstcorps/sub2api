@@ -75,7 +75,7 @@ func TestGrokOAuthServiceExchangeCodeRequiresStateForCallbackURLAndConsumesSessi
 	require.Zero(t, client.exchangeCalls)
 }
 
-func TestGrokOAuthServiceBuildAccountCredentialsDefaultsToSubscriptionProxy(t *testing.T) {
+func TestGrokOAuthServiceBuildAccountCredentialsDefaultsToOfficialAPI(t *testing.T) {
 	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{})
 	defer svc.Stop()
 
@@ -84,7 +84,7 @@ func TestGrokOAuthServiceBuildAccountCredentialsDefaultsToSubscriptionProxy(t *t
 		ExpiresAt:   time.Now().Add(time.Hour).Unix(),
 	})
 
-	require.Equal(t, xai.DefaultCLIBaseURL, credentials["base_url"])
+	require.Equal(t, xai.DefaultBaseURL, credentials["base_url"])
 }
 
 func TestGrokOAuthServiceConvertFromSSOExtractsBuildClaims(t *testing.T) {

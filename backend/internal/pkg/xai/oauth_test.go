@@ -217,6 +217,13 @@ func TestIsOfficialBaseURL(t *testing.T) {
 	}
 }
 
+func TestIsCLIBaseURL(t *testing.T) {
+	require.True(t, IsCLIBaseURL(DefaultCLIBaseURL+"/responses"))
+	require.True(t, IsCLIBaseURL("HTTPS://CLI-CHAT-PROXY.GROK.COM:443/v1"))
+	require.False(t, IsCLIBaseURL(DefaultBaseURL+"/responses"))
+	require.False(t, IsCLIBaseURL("://invalid"))
+}
+
 func TestValidateBaseURLsRejectEmptyQueryDelimiter(t *testing.T) {
 	_, err := ValidateBaseURL("https://grok.example.test/v1?")
 	require.Error(t, err)

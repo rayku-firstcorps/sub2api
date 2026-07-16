@@ -760,7 +760,7 @@ func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Acc
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	if account.IsGrokOAuth() {
+	if xai.IsCLIBaseURL(targetURL) {
 		applyGrokCLIHeaders(req.Header)
 	}
 	applyGrokCacheHeaders(req.Header, cacheIdentity)

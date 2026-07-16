@@ -1274,12 +1274,12 @@ func (a *Account) GetGrokBaseURL() string {
 	}
 	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
 	if a.IsGrokOAuth() {
-		// Subscription traffic defaults to the supported CLI gateway. Stored
+		// OAuth traffic defaults to the official xAI API. Stored
 		// official-host values (written by credential creation/refresh, or
 		// legacy variants) mean "not customized"; only an explicit custom-host
 		// forwarding address redirects traffic.
 		if baseURL == "" || xai.IsOfficialBaseURL(baseURL) {
-			return xai.DefaultCLIBaseURL
+			return xai.DefaultBaseURL
 		}
 		return baseURL
 	}

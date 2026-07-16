@@ -358,6 +358,15 @@ func IsOfficialBaseURL(raw string) bool {
 	return IsOfficialBaseURLHost(parsed.Hostname())
 }
 
+// IsCLIBaseURL reports whether raw targets the official Grok CLI proxy.
+func IsCLIBaseURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return strings.EqualFold(parsed.Hostname(), "cli-chat-proxy.grok.com")
+}
+
 func AllowUnsafeURLOverrides() bool {
 	return envBool(EnvAllowUnsafeURLOverrides)
 }

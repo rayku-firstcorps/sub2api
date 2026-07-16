@@ -153,7 +153,7 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	if account.IsGrokOAuth() {
+	if xai.IsCLIBaseURL(targetURL) {
 		applyGrokCLIHeaders(req.Header)
 	}
 	// 探测请求与真实转发保持同一套账号级请求头覆写，避免探测通过但转发失败。
