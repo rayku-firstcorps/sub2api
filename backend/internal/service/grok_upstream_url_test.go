@@ -105,7 +105,7 @@ func TestGrokAPIKeyURLPolicyRedactsMalformedConfiguredURL(t *testing.T) {
 }
 
 func TestGrokOAuthURLPolicy(t *testing.T) {
-	t.Run("default official API always allowed under restrictive allowlist", func(t *testing.T) {
+	t.Run("default CLI gateway always allowed under restrictive allowlist", func(t *testing.T) {
 		account := &Account{
 			Platform:    PlatformGrok,
 			Type:        AccountTypeOAuth,
@@ -117,15 +117,15 @@ func TestGrokOAuthURLPolicy(t *testing.T) {
 
 		target, err := buildGrokResponsesURL(account, cfg)
 		require.NoError(t, err)
-		require.Equal(t, xai.DefaultBaseURL+"/responses", target)
+		require.Equal(t, xai.DefaultCLIBaseURL+"/responses", target)
 	})
 
-	t.Run("stored official-host variant resolves to official API", func(t *testing.T) {
+	t.Run("stored official API endpoint is honored (manual endpoint switch)", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformGrok,
 			Type:     AccountTypeOAuth,
 			Credentials: map[string]any{
-				"base_url": "HTTPS://API.X.AI:443/",
+				"base_url": xai.DefaultBaseURL,
 			},
 		}
 		cfg := &config.Config{}
@@ -133,6 +133,23 @@ func TestGrokOAuthURLPolicy(t *testing.T) {
 		target, err := buildGrokResponsesURL(account, cfg)
 		require.NoError(t, err)
 		require.Equal(t, xai.DefaultBaseURL+"/responses", target)
+	})
+
+	t.Run("stored regional API endpoint is trusted even under restrictive allowlist", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformGrok,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"base_url": "https://us-west-2.api.x.ai/v1",
+			},
+		}
+		cfg := &config.Config{}
+		cfg.Security.URLAllowlist.Enabled = true
+		cfg.Security.URLAllowlist.UpstreamHosts = []string{"other.example.test"}
+
+		target, err := buildGrokResponsesURL(account, cfg)
+		require.NoError(t, err)
+		require.Equal(t, "https://us-west-2.api.x.ai/v1/responses", target)
 	})
 
 	t.Run("custom forwarding address follows operator policy", func(t *testing.T) {
@@ -230,12 +247,12 @@ func TestGrokOAuthURLPolicy(t *testing.T) {
 		}
 		target, err := buildGrokResponsesURL(official, cfg)
 		require.NoError(t, err)
-		require.Equal(t, xai.DefaultBaseURL+"/responses", target)
+		require.Equal(t, xai.DefaultCLIBaseURL+"/responses", target)
 	})
 }
 
 func TestGrokBillingURLFollowsAccountBaseURL(t *testing.T) {
-	t.Run("oauth default uses official API", func(t *testing.T) {
+	t.Run("oauth default stays on CLI gateway", func(t *testing.T) {
 		account := &Account{
 			Platform:    PlatformGrok,
 			Type:        AccountTypeOAuth,
@@ -244,11 +261,11 @@ func TestGrokBillingURLFollowsAccountBaseURL(t *testing.T) {
 
 		weeklyURL, err := buildGrokBillingURL(account, nil, true)
 		require.NoError(t, err)
-		require.Equal(t, xai.DefaultBaseURL+"/billing?format=credits", weeklyURL)
+		require.Equal(t, xai.DefaultCLIBaseURL+"/billing?format=credits", weeklyURL)
 
 		monthlyURL, err := buildGrokBillingURL(account, nil, false)
 		require.NoError(t, err)
-		require.Equal(t, xai.DefaultBaseURL+"/billing", monthlyURL)
+		require.Equal(t, xai.DefaultCLIBaseURL+"/billing", monthlyURL)
 	})
 
 	t.Run("oauth custom forwarding address carries billing probes", func(t *testing.T) {
