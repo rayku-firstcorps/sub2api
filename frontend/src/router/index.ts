@@ -598,6 +598,19 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'admin.keywordFilter.title',
       descriptionKey: 'admin.keywordFilter.description',
       requiresKeywordFilter: true
+	    }
+  },
+  {
+    path: '/admin/prompt-audit',
+    name: 'AdminPromptAudit',
+    component: () => import('@/features/prompt-audit/PromptAuditView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Prompt Audit',
+      titleKey: 'admin.promptAudit.title',
+      descriptionKey: 'admin.promptAudit.description',
+      requiresRiskControl: true
     }
   },
   {
