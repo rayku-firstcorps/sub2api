@@ -61,14 +61,14 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { AccountPlatform, AdminGroup } from '@/types'
+import type { AccountPlatform, AdminGroup, GroupPlatform } from '@/types'
 
 const { t } = useI18n()
 
 interface Props {
   modelValue: number[]
   groups: AdminGroup[]
-  platform?: AccountPlatform // Optional platform filter
+  platform?: AccountPlatform | GroupPlatform // Optional platform filter
   mixedScheduling?: boolean // For antigravity accounts: allow anthropic/gemini groups
   searchable?: boolean | 'auto'
 }
@@ -96,10 +96,17 @@ const filteredGroups = computed(() => {
     // Antigravity mixed scheduling can use antigravity, anthropic, or gemini groups.
     if (effectivePlatform.value === 'antigravity' && props.mixedScheduling) {
       result = result.filter(
-        (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini'
+        (g) =>
+          g.platform === 'antigravity' ||
+          g.platform === 'anthropic' ||
+          g.platform === 'gemini' ||
+          g.platform === 'composite'
       )
     } else {
-      result = result.filter((g) => g.platform === effectivePlatform.value)
+      // Composite groups can accept accounts from any concrete platform.
+      result = result.filter(
+        (g) => g.platform === effectivePlatform.value || g.platform === 'composite'
+      )
     }
   }
   if (isSearchable.value && searchText.value) {
