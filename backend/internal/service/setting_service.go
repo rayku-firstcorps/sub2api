@@ -284,6 +284,21 @@ func (s *SettingService) LoadForwardedClientIPSettings(ctx context.Context) erro
 	return headersErr
 }
 
+// LoadUsageLogRequestContextSetting applies the persisted hot-path switch before
+// the server starts accepting traffic. A missing value keeps the compatible
+// default enabled.
+func (s *SettingService) LoadUsageLogRequestContextSetting(ctx context.Context) error {
+	if s == nil || s.settingRepo == nil {
+		return nil
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyUsageLogRequestContextEnabled})
+	if err != nil {
+		return fmt.Errorf("get usage log request context setting: %w", err)
+	}
+	SetUsageLogRequestContextEnabled(!isFalseSettingValue(values[SettingKeyUsageLogRequestContextEnabled]))
+	return nil
+}
+
 // GetAllSettings 获取所有系统设置
 func (s *SettingService) GetAllSettings(ctx context.Context) (*SystemSettings, error) {
 	settings, err := s.settingRepo.GetAll(ctx)

@@ -8003,8 +8003,9 @@
         <!-- /Tab: Email -->
 
         <!-- Tab: Backup -->
-        <div v-show="activeTab === 'backup'">
+        <div v-show="activeTab === 'backup'" class="space-y-6">
           <BackupSettings />
+          <RequestContextCleanupSettings />
         </div>
 
         <!-- Save Button -->
@@ -8126,6 +8127,7 @@ import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
+import RequestContextCleanupSettings from "@/views/admin/settings/RequestContextCleanupSettings.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
@@ -9083,6 +9085,7 @@ const form = reactive<SettingsForm>({
   affiliate_enabled: false,
   // Allow user view error requests
   allow_user_view_error_requests: false,
+  usage_log_request_context_enabled: true,
 });
 
 type OpenAIAdvancedSchedulerOverrideKey =

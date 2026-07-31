@@ -313,7 +313,8 @@ type SystemSettings struct {
 	DefaultPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"default_platform_quotas,omitempty"`
 
 	// 允许终端用户在用量页查看自己的失败请求
-	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+	AllowUserViewErrorRequests    bool `json:"allow_user_view_error_requests"`
+	UsageLogRequestContextEnabled bool `json:"usage_log_request_context_enabled"`
 }
 
 type DefaultSubscriptionSetting struct {

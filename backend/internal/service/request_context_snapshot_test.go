@@ -9,6 +9,7 @@ import (
 )
 
 func TestPrepareUsageLogRequestContext_SanitizesAndTracksBytes(t *testing.T) {
+	SetUsageLogRequestContextEnabled(true)
 	raw := []byte(`{"model":"gpt-5.1","api_key":"secret","messages":[{"role":"user","content":"hello"}]}`)
 
 	got, truncated, bytesLen := PrepareUsageLogRequestContext(raw)
@@ -18,6 +19,17 @@ func TestPrepareUsageLogRequestContext_SanitizesAndTracksBytes(t *testing.T) {
 	require.NotNil(t, bytesLen)
 	require.Equal(t, len(raw), *bytesLen)
 	require.JSONEq(t, `{"model":"gpt-5.1","api_key":"[REDACTED]","messages":[{"role":"user","content":"hello"}]}`, *got)
+}
+
+func TestPrepareUsageLogRequestContext_DisabledSkipsSnapshot(t *testing.T) {
+	SetUsageLogRequestContextEnabled(false)
+	t.Cleanup(func() { SetUsageLogRequestContextEnabled(true) })
+
+	got, truncated, bytesLen := PrepareUsageLogRequestContext([]byte(`{"model":"gpt-5.1"}`))
+
+	require.Nil(t, got)
+	require.False(t, truncated)
+	require.Nil(t, bytesLen)
 }
 
 func TestPrepareUsageLogRequestContext_TruncatesLargeMessages(t *testing.T) {

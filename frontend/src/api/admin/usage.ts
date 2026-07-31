@@ -39,6 +39,7 @@ export interface SimpleApiKey {
 }
 
 export interface UsageCleanupFilters {
+	mode?: 'delete_logs' | 'clear_request_context'
   start_time: string
   end_time: string
   user_id?: number
@@ -204,6 +205,18 @@ export async function cancelCleanupTask(taskId: number): Promise<{ id: number; s
   return data
 }
 
+export async function getRequestContextCleanupTask(): Promise<UsageCleanupTask | null> {
+  const { data } = await apiClient.get<UsageCleanupTask | null>('/admin/usage/request-context-cleanup')
+  return data
+}
+
+export async function createRequestContextCleanupTask(retentionDays: number): Promise<UsageCleanupTask> {
+  const { data } = await apiClient.post<UsageCleanupTask>('/admin/usage/request-context-cleanup', {
+    retention_days: retentionDays
+  })
+  return data
+}
+
 export const adminUsageAPI = {
   list,
   getStats,
@@ -211,7 +224,9 @@ export const adminUsageAPI = {
   searchApiKeys,
   listCleanupTasks,
   createCleanupTask,
-  cancelCleanupTask
+  cancelCleanupTask,
+  getRequestContextCleanupTask,
+  createRequestContextCleanupTask
 }
 
 export default adminUsageAPI

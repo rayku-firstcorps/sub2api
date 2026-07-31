@@ -344,7 +344,8 @@ type UpdateSettingsRequest struct {
 	AuthSourceGooglePlatformQuotas   map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_google_platform_quotas"`
 	AuthSourceDingTalkPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_dingtalk_platform_quotas"`
 
-	AllowUserViewErrorRequests *bool `json:"allow_user_view_error_requests"`
+	AllowUserViewErrorRequests    *bool `json:"allow_user_view_error_requests"`
+	UsageLogRequestContextEnabled *bool `json:"usage_log_request_context_enabled"`
 }
 
 // UpdateSettings 更新系统设置
@@ -1464,6 +1465,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AllowUserViewErrorRequests
 		}(),
+		UsageLogRequestContextEnabled: func() bool {
+			if req.UsageLogRequestContextEnabled != nil {
+				return *req.UsageLogRequestContextEnabled
+			}
+			return previousSettings.UsageLogRequestContextEnabled
+		}(),
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -2109,11 +2116,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
-		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
-		KeywordFilterEnabled:        updatedSettings.KeywordFilterEnabled,
-		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
-		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
-		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
+		RiskControlEnabled:            updatedSettings.RiskControlEnabled,
+		KeywordFilterEnabled:          updatedSettings.KeywordFilterEnabled,
+		CyberSessionBlockEnabled:      updatedSettings.CyberSessionBlockEnabled,
+		CyberSessionBlockTTLSeconds:   updatedSettings.CyberSessionBlockTTLSeconds,
+		AllowUserViewErrorRequests:    updatedSettings.AllowUserViewErrorRequests,
+		UsageLogRequestContextEnabled: updatedSettings.UsageLogRequestContextEnabled,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)

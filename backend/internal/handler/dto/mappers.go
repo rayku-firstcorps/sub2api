@@ -737,6 +737,7 @@ func UsageCleanupTaskFromService(task *service.UsageCleanupTask) *UsageCleanupTa
 		ID:     task.ID,
 		Status: task.Status,
 		Filters: UsageCleanupFilters{
+			Mode:        task.Filters.Mode,
 			StartTime:   task.Filters.StartTime,
 			EndTime:     task.Filters.EndTime,
 			UserID:      task.Filters.UserID,

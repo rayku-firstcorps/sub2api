@@ -570,3 +570,7 @@ const AdminAPIKeyPrefix = "admin-"
 // SettingKeyAllowUserViewErrorRequests controls whether end users can view
 // their own failed requests on the usage page. Default false (opt-in).
 const SettingKeyAllowUserViewErrorRequests = "allow_user_view_error_requests"
+
+// SettingKeyUsageLogRequestContextEnabled controls whether new usage logs store
+// sanitized request context snapshots. Default true for backward compatibility.
+const SettingKeyUsageLogRequestContextEnabled = "usage_log_request_context_enabled"

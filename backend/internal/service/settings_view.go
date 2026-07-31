@@ -275,6 +275,9 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
+
+	// 是否在用量日志中记录请求上下文快照
+	UsageLogRequestContextEnabled bool
 }
 
 type DefaultSubscriptionSetting struct {

@@ -102,6 +102,10 @@ func (s *cleanupRepoStub) DeleteUsageLogsBatch(ctx context.Context, filters serv
 	return 0, nil
 }
 
+func (s *cleanupRepoStub) ClearUsageRequestContextsBatch(ctx context.Context, filters service.UsageCleanupFilters, limit int) (int64, error) {
+	return 0, nil
+}
+
 var _ service.UsageCleanupRepository = (*cleanupRepoStub)(nil)
 
 func setupCleanupRouter(cleanupService *service.UsageCleanupService, userID int64) *gin.Engine {
@@ -118,7 +122,29 @@ func setupCleanupRouter(cleanupService *service.UsageCleanupService, userID int6
 	router.POST("/api/v1/admin/usage/cleanup-tasks", handler.CreateCleanupTask)
 	router.GET("/api/v1/admin/usage/cleanup-tasks", handler.ListCleanupTasks)
 	router.POST("/api/v1/admin/usage/cleanup-tasks/:id/cancel", handler.CancelCleanupTask)
+	router.POST("/api/v1/admin/usage/request-context-cleanup", handler.CreateRequestContextCleanupTask)
+	router.GET("/api/v1/admin/usage/request-context-cleanup", handler.GetRequestContextCleanupTask)
 	return router
+}
+
+func TestUsageHandlerCreateRequestContextCleanupTask(t *testing.T) {
+	repo := &cleanupRepoStub{}
+	svc := service.NewUsageCleanupService(repo, nil, nil, &config.Config{
+		UsageCleanup: config.UsageCleanupConfig{Enabled: true, MaxRangeDays: 31},
+	})
+	router := setupCleanupRouter(svc, 9)
+	body := bytes.NewBufferString(`{"retention_days":7}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/usage/request-context-cleanup", body)
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, service.UsageCleanupModeClearRequestContext, repo.created[0].Filters.Mode)
+	require.Equal(t, time.Unix(0, 0).UTC(), repo.created[0].Filters.StartTime)
+	require.WithinDuration(t, time.Now().UTC().AddDate(0, 0, -7), repo.created[0].Filters.EndTime, 2*time.Second)
 }
 
 func TestUsageHandlerCreateCleanupTaskUnauthorized(t *testing.T) {

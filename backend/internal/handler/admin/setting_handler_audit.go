@@ -552,6 +552,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.CyberSessionBlockTTLSeconds != after.CyberSessionBlockTTLSeconds {
 		changed = append(changed, "cyber_session_block_ttl_seconds")
 	}
+	if before.UsageLogRequestContextEnabled != after.UsageLogRequestContextEnabled {
+		changed = append(changed, service.SettingKeyUsageLogRequestContextEnabled)
+	}
 	// Default platform quotas（JSON map，整体比较）
 	if !equalPlatformQuotaSettings(before.DefaultPlatformQuotas, after.DefaultPlatformQuotas) {
 		changed = append(changed, service.SettingKeyDefaultPlatformQuotas)

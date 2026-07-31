@@ -576,6 +576,7 @@ type AdminUsageLog struct {
 }
 
 type UsageCleanupFilters struct {
+	Mode        string    `json:"mode,omitempty"`
 	StartTime   time.Time `json:"start_time"`
 	EndTime     time.Time `json:"end_time"`
 	UserID      *int64    `json:"user_id,omitempty"`

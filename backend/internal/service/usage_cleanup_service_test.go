@@ -43,6 +43,7 @@ type cleanupRepoStub struct {
 	claimErr      error
 	deleteQueue   []cleanupDeleteResponse
 	deleteCalls   []cleanupDeleteCall
+	contextCalls  []cleanupDeleteCall
 	markSucceeded []cleanupMarkCall
 	markFailed    []cleanupMarkCall
 	statusByID    map[int64]string
@@ -231,6 +232,46 @@ func (s *cleanupRepoStub) DeleteUsageLogsBatch(ctx context.Context, filters Usag
 	return resp.deleted, resp.err
 }
 
+func (s *cleanupRepoStub) ClearUsageRequestContextsBatch(ctx context.Context, filters UsageCleanupFilters, limit int) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.contextCalls = append(s.contextCalls, cleanupDeleteCall{filters: filters, limit: limit})
+	if len(s.deleteQueue) == 0 {
+		return 0, nil
+	}
+	resp := s.deleteQueue[0]
+	s.deleteQueue = s.deleteQueue[1:]
+	return resp.deleted, resp.err
+}
+
+func TestUsageCleanupServiceExecuteRequestContextCleanupIsBounded(t *testing.T) {
+	repo := &cleanupRepoStub{
+		deleteQueue: []cleanupDeleteResponse{{deleted: 500}, {deleted: 1}},
+		statusByID:  map[int64]string{21: UsageCleanupStatusRunning},
+	}
+	dashboardRepo := &dashboardRepoStub{}
+	dashboard := NewDashboardAggregationService(dashboardRepo, nil, &config.Config{})
+	svc := NewUsageCleanupService(repo, nil, dashboard, &config.Config{
+		UsageCleanup: config.UsageCleanupConfig{Enabled: true, BatchSize: 5000},
+	})
+	task := &UsageCleanupTask{
+		ID: 21,
+		Filters: UsageCleanupFilters{
+			Mode:      UsageCleanupModeClearRequestContext,
+			StartTime: time.Now().Add(-48 * time.Hour),
+			EndTime:   time.Now().Add(-24 * time.Hour),
+		},
+	}
+
+	svc.executeTask(context.Background(), task)
+
+	require.Len(t, repo.contextCalls, 2)
+	require.Equal(t, usageContextCleanupBatchLimit, repo.contextCalls[0].limit)
+	require.Empty(t, repo.deleteCalls)
+	require.Equal(t, 0, dashboardRepo.recomputeCalls)
+	require.Equal(t, int64(501), repo.markSucceeded[0].deletedRows)
+}
+
 func TestUsageCleanupServiceCreateTaskSanitizeFilters(t *testing.T) {
 	repo := &cleanupRepoStub{}
 	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, MaxRangeDays: 31}}
@@ -261,6 +302,20 @@ func TestUsageCleanupServiceCreateTaskSanitizeFilters(t *testing.T) {
 	require.Equal(t, "gpt-4", *task.Filters.Model)
 	require.Nil(t, task.Filters.BillingType)
 	require.Equal(t, int64(9), task.CreatedBy)
+}
+
+func TestUsageCleanupServiceCreateRequestContextCleanupTaskConflict(t *testing.T) {
+	repo := &cleanupRepoStub{createErr: ErrUsageContextCleanupActive}
+	svc := NewUsageCleanupService(repo, nil, nil, &config.Config{
+		UsageCleanup: config.UsageCleanupConfig{Enabled: true, MaxRangeDays: 31},
+	})
+
+	_, err := svc.CreateRequestContextCleanupTask(context.Background(), 7, 9)
+
+	require.Error(t, err)
+	var apiErr *infraerrors.Error
+	require.True(t, errors.As(err, &apiErr))
+	require.Equal(t, int32(http.StatusConflict), apiErr.Code)
 }
 
 func TestSanitizeUsageCleanupFiltersRequestTypePriority(t *testing.T) {

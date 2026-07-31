@@ -487,6 +487,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 
 	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
+	updates[SettingKeyUsageLogRequestContextEnabled] = strconv.FormatBool(settings.UsageLogRequestContextEnabled)
 
 	return updates, nil
 }
@@ -566,6 +567,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if settings == nil {
 		return
 	}
+	SetUsageLogRequestContextEnabled(settings.UsageLogRequestContextEnabled)
 
 	// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
 	versionBoundsSF.Forget("version_bounds")

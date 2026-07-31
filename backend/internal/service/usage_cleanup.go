@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
+
+var ErrUsageContextCleanupActive = errors.New("request context cleanup already active")
 
 const (
 	UsageCleanupStatusPending   = "pending"
@@ -13,6 +16,9 @@ const (
 	UsageCleanupStatusSucceeded = "succeeded"
 	UsageCleanupStatusFailed    = "failed"
 	UsageCleanupStatusCanceled  = "canceled"
+
+	UsageCleanupModeDeleteLogs          = "delete_logs"
+	UsageCleanupModeClearRequestContext = "clear_request_context"
 )
 
 // UsageCleanupFilters 定义清理任务过滤条件
@@ -26,6 +32,7 @@ const (
 // - nil 表示未设置该过滤条件
 // - 过滤条件均为精确匹配
 type UsageCleanupFilters struct {
+	Mode        string    `json:"mode,omitempty"`
 	StartTime   time.Time `json:"start_time"`
 	EndTime     time.Time `json:"end_time"`
 	UserID      *int64    `json:"user_id,omitempty"`
@@ -72,4 +79,5 @@ type UsageCleanupRepository interface {
 	MarkTaskSucceeded(ctx context.Context, taskID int64, deletedRows int64) error
 	MarkTaskFailed(ctx context.Context, taskID int64, deletedRows int64, errorMsg string) error
 	DeleteUsageLogsBatch(ctx context.Context, filters UsageCleanupFilters, limit int) (int64, error)
+	ClearUsageRequestContextsBatch(ctx context.Context, filters UsageCleanupFilters, limit int) (int64, error)
 }

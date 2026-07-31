@@ -13,6 +13,7 @@ import (
 	dbusagecleanuptask "github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 type usageCleanupRepository struct {
@@ -33,9 +34,22 @@ func (r *usageCleanupRepository) CreateTask(ctx context.Context, task *service.U
 		return nil
 	}
 	if r.client != nil {
-		return r.createTaskWithEnt(ctx, task)
+		err := r.createTaskWithEnt(ctx, task)
+		return translateUsageCleanupCreateError(task, err)
 	}
-	return r.createTaskWithSQL(ctx, task)
+	err := r.createTaskWithSQL(ctx, task)
+	return translateUsageCleanupCreateError(task, err)
+}
+
+func translateUsageCleanupCreateError(task *service.UsageCleanupTask, err error) error {
+	if err == nil || task == nil || task.Filters.Mode != service.UsageCleanupModeClearRequestContext {
+		return err
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == "23505" && pqErr.Constraint == "usage_cleanup_tasks_active_context_mode_uq" {
+		return service.ErrUsageContextCleanupActive
+	}
+	return err
 }
 
 func (r *usageCleanupRepository) ListTasks(ctx context.Context, params pagination.PaginationParams) ([]service.UsageCleanupTask, *pagination.PaginationResult, error) {
@@ -318,6 +332,47 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 		return 0, err
 	}
 	return deleted, nil
+}
+
+func (r *usageCleanupRepository) ClearUsageRequestContextsBatch(ctx context.Context, filters service.UsageCleanupFilters, limit int) (int64, error) {
+	if filters.StartTime.IsZero() || filters.EndTime.IsZero() {
+		return 0, fmt.Errorf("cleanup filters missing time range")
+	}
+	if limit < 1 || limit > 500 {
+		return 0, fmt.Errorf("request context cleanup batch limit must be between 1 and 500")
+	}
+	whereClause, args := buildUsageCleanupWhere(filters)
+	args = append(args, limit)
+	query := fmt.Sprintf(`
+		WITH target AS (
+			SELECT id
+			FROM usage_logs
+			WHERE %s AND request_context_json IS NOT NULL
+			ORDER BY created_at ASC, id ASC
+			LIMIT $%d
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE usage_logs AS logs
+		SET request_context_json = NULL,
+			request_context_truncated = FALSE,
+			request_context_bytes = NULL
+		FROM target
+		WHERE logs.id = target.id
+		RETURNING logs.id
+	`, whereClause, len(args))
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	var updated int64
+	for rows.Next() {
+		updated++
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return updated, nil
 }
 
 func buildUsageCleanupWhere(filters service.UsageCleanupFilters) (string, []any) {

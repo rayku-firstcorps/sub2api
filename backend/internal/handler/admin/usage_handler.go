@@ -57,6 +57,10 @@ type CreateUsageCleanupTaskRequest struct {
 	Timezone    string  `json:"timezone"`
 }
 
+type CreateRequestContextCleanupTaskRequest struct {
+	RetentionDays int `json:"retention_days" binding:"required"`
+}
+
 // List handles listing all usage records with filters
 // GET /api/v1/admin/usage
 func (h *UsageHandler) List(c *gin.Context) {
@@ -583,6 +587,57 @@ func (h *UsageHandler) CreateCleanupTask(c *gin.Context) {
 		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已创建: task=%d operator=%d status=%s", task.ID, subject.UserID, task.Status)
 		return dto.UsageCleanupTaskFromService(task), nil
 	})
+}
+
+// CreateRequestContextCleanupTask queues cleanup of old request context payloads.
+// POST /api/v1/admin/usage/request-context-cleanup
+func (h *UsageHandler) CreateRequestContextCleanupTask(c *gin.Context) {
+	if h.cleanupService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Usage cleanup service unavailable")
+		return
+	}
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "Unauthorized")
+		return
+	}
+	var req CreateRequestContextCleanupTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	payload := struct {
+		OperatorID    int64 `json:"operator_id"`
+		RetentionDays int   `json:"retention_days"`
+	}{subject.UserID, req.RetentionDays}
+	executeAdminIdempotentJSON(c, "admin.usage.request_context_cleanup.create", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		task, err := h.cleanupService.CreateRequestContextCleanupTask(ctx, req.RetentionDays, subject.UserID)
+		if err != nil {
+			return nil, err
+		}
+		return dto.UsageCleanupTaskFromService(task), nil
+	})
+}
+
+// GetRequestContextCleanupTask returns the newest context cleanup task.
+// GET /api/v1/admin/usage/request-context-cleanup
+func (h *UsageHandler) GetRequestContextCleanupTask(c *gin.Context) {
+	if h.cleanupService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Usage cleanup service unavailable")
+		return
+	}
+	tasks, _, err := h.cleanupService.ListTasks(c.Request.Context(), pagination.PaginationParams{Page: 1, PageSize: 100})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	for i := range tasks {
+		if tasks[i].Filters.Mode == service.UsageCleanupModeClearRequestContext {
+			response.Success(c, dto.UsageCleanupTaskFromService(&tasks[i]))
+			return
+		}
+	}
+	response.Success(c, nil)
 }
 
 // CancelCleanupTask handles canceling a usage cleanup task

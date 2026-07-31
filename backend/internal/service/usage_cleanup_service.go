@@ -19,7 +19,10 @@ import (
 )
 
 const (
-	usageCleanupWorkerName = "usage_cleanup_worker"
+	usageCleanupWorkerName          = "usage_cleanup_worker"
+	usageContextCleanupBatchLimit   = 500
+	usageContextCleanupBatchPause   = 150 * time.Millisecond
+	usageContextCleanupBatchTimeout = 15 * time.Second
 )
 
 // UsageCleanupService 负责创建与执行使用记录清理任务
@@ -51,6 +54,9 @@ func NewUsageCleanupService(repo UsageCleanupRepository, timingWheel *TimingWhee
 
 func describeUsageCleanupFilters(filters UsageCleanupFilters) string {
 	var parts []string
+	if strings.TrimSpace(filters.Mode) != "" {
+		parts = append(parts, "mode="+usageCleanupMode(filters))
+	}
 	parts = append(parts, "start="+filters.StartTime.UTC().Format(time.RFC3339))
 	parts = append(parts, "end="+filters.EndTime.UTC().Format(time.RFC3339))
 	if filters.UserID != nil {
@@ -123,6 +129,24 @@ func (s *UsageCleanupService) ListTasks(ctx context.Context, params pagination.P
 }
 
 func (s *UsageCleanupService) CreateTask(ctx context.Context, filters UsageCleanupFilters, createdBy int64) (*UsageCleanupTask, error) {
+	logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] create_task requested: operator=%d %s", createdBy, describeUsageCleanupFilters(filters))
+	return s.createTask(ctx, filters, createdBy, true)
+}
+
+// CreateRequestContextCleanupTask queues a bounded background cleanup while preserving usage rows.
+func (s *UsageCleanupService) CreateRequestContextCleanupTask(ctx context.Context, retentionDays int, createdBy int64) (*UsageCleanupTask, error) {
+	if retentionDays < 1 || retentionDays > 365 {
+		return nil, infraerrors.BadRequest("USAGE_CONTEXT_CLEANUP_INVALID_RETENTION", "retention_days must be between 1 and 365")
+	}
+	filters := UsageCleanupFilters{
+		Mode:      UsageCleanupModeClearRequestContext,
+		StartTime: time.Unix(0, 0).UTC(),
+		EndTime:   time.Now().UTC().AddDate(0, 0, -retentionDays),
+	}
+	return s.createTask(ctx, filters, createdBy, false)
+}
+
+func (s *UsageCleanupService) createTask(ctx context.Context, filters UsageCleanupFilters, createdBy int64, enforceMaxRange bool) (*UsageCleanupTask, error) {
 	if s == nil || s.repo == nil {
 		return nil, fmt.Errorf("cleanup service not ready")
 	}
@@ -132,24 +156,17 @@ func (s *UsageCleanupService) CreateTask(ctx context.Context, filters UsageClean
 	if createdBy <= 0 {
 		return nil, infraerrors.BadRequest("USAGE_CLEANUP_INVALID_CREATOR", "invalid creator")
 	}
-
-	logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] create_task requested: operator=%d %s", createdBy, describeUsageCleanupFilters(filters))
 	sanitizeUsageCleanupFilters(&filters)
-	if err := s.validateFilters(filters); err != nil {
-		logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] create_task rejected: operator=%d err=%v %s", createdBy, err, describeUsageCleanupFilters(filters))
+	if err := s.validateFiltersWithRangeLimit(filters, enforceMaxRange); err != nil {
 		return nil, err
 	}
-
-	task := &UsageCleanupTask{
-		Status:    UsageCleanupStatusPending,
-		Filters:   filters,
-		CreatedBy: createdBy,
-	}
+	task := &UsageCleanupTask{Status: UsageCleanupStatusPending, Filters: filters, CreatedBy: createdBy}
 	if err := s.repo.CreateTask(ctx, task); err != nil {
-		logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] create_task persist failed: operator=%d err=%v %s", createdBy, err, describeUsageCleanupFilters(filters))
+		if errors.Is(err, ErrUsageContextCleanupActive) {
+			return nil, infraerrors.New(http.StatusConflict, "USAGE_CONTEXT_CLEANUP_ALREADY_ACTIVE", "request context cleanup is already pending or running")
+		}
 		return nil, fmt.Errorf("create cleanup task: %w", err)
 	}
-	logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] create_task persisted: task=%d operator=%d status=%s deleted_rows=%d %s", task.ID, createdBy, task.Status, task.DeletedRows, describeUsageCleanupFilters(filters))
 	go s.runOnce()
 	return task, nil
 }
@@ -191,7 +208,11 @@ func (s *UsageCleanupService) executeTask(ctx context.Context, task *UsageCleanu
 		return
 	}
 
+	mode := usageCleanupMode(task.Filters)
 	batchSize := s.batchSize()
+	if mode == UsageCleanupModeClearRequestContext && batchSize > usageContextCleanupBatchLimit {
+		batchSize = usageContextCleanupBatchLimit
+	}
 	deletedTotal := task.DeletedRows
 	start := time.Now()
 	logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] task started: task=%d batch_size=%d deleted_rows=%d %s", task.ID, batchSize, deletedTotal, describeUsageCleanupFilters(task.Filters))
@@ -213,7 +234,18 @@ func (s *UsageCleanupService) executeTask(ctx context.Context, task *UsageCleanu
 		}
 
 		batchNum++
-		deleted, err := s.repo.DeleteUsageLogsBatch(ctx, task.Filters, batchSize)
+		batchCtx := ctx
+		batchCancel := func() {}
+		if mode == UsageCleanupModeClearRequestContext {
+			batchCtx, batchCancel = context.WithTimeout(ctx, usageContextCleanupBatchTimeout)
+		}
+		var deleted int64
+		if mode == UsageCleanupModeClearRequestContext {
+			deleted, err = s.repo.ClearUsageRequestContextsBatch(batchCtx, task.Filters, batchSize)
+		} else {
+			deleted, err = s.repo.DeleteUsageLogsBatch(batchCtx, task.Filters, batchSize)
+		}
+		batchCancel()
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				// 任务被中断（例如服务停止/超时），保持 running 状态，后续通过 stale reclaim 续跑。
@@ -237,6 +269,13 @@ func (s *UsageCleanupService) executeTask(ctx context.Context, task *UsageCleanu
 		if deleted == 0 || deleted < int64(batchSize) {
 			break
 		}
+		if mode == UsageCleanupModeClearRequestContext {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(usageContextCleanupBatchPause):
+			}
+		}
 	}
 
 	updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -247,7 +286,7 @@ func (s *UsageCleanupService) executeTask(ctx context.Context, task *UsageCleanu
 		logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] task succeeded: task=%d deleted_rows=%d duration=%s", task.ID, deletedTotal, time.Since(start))
 	}
 
-	if s.dashboard != nil {
+	if mode != UsageCleanupModeClearRequestContext && s.dashboard != nil {
 		if err := s.dashboard.TriggerRecomputeRange(task.Filters.StartTime, task.Filters.EndTime); err != nil {
 			logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] trigger dashboard recompute failed: task=%d err=%v", task.ID, err)
 		} else {
@@ -289,6 +328,14 @@ func (s *UsageCleanupService) isTaskCanceled(ctx context.Context, taskID int64) 
 }
 
 func (s *UsageCleanupService) validateFilters(filters UsageCleanupFilters) error {
+	return s.validateFiltersWithRangeLimit(filters, true)
+}
+
+func (s *UsageCleanupService) validateFiltersWithRangeLimit(filters UsageCleanupFilters, enforceMaxRange bool) error {
+	mode := usageCleanupMode(filters)
+	if mode != UsageCleanupModeDeleteLogs && mode != UsageCleanupModeClearRequestContext {
+		return infraerrors.BadRequest("USAGE_CLEANUP_INVALID_MODE", "invalid cleanup mode")
+	}
 	if filters.StartTime.IsZero() || filters.EndTime.IsZero() {
 		return infraerrors.BadRequest("USAGE_CLEANUP_MISSING_RANGE", "start_date and end_date are required")
 	}
@@ -296,13 +343,20 @@ func (s *UsageCleanupService) validateFilters(filters UsageCleanupFilters) error
 		return infraerrors.BadRequest("USAGE_CLEANUP_INVALID_RANGE", "end_date must be after start_date")
 	}
 	maxDays := s.maxRangeDays()
-	if maxDays > 0 {
+	if enforceMaxRange && maxDays > 0 {
 		delta := filters.EndTime.Sub(filters.StartTime)
 		if delta > time.Duration(maxDays)*24*time.Hour {
 			return infraerrors.BadRequest("USAGE_CLEANUP_RANGE_TOO_LARGE", fmt.Sprintf("date range exceeds %d days", maxDays))
 		}
 	}
 	return nil
+}
+
+func usageCleanupMode(filters UsageCleanupFilters) string {
+	if strings.TrimSpace(filters.Mode) == "" {
+		return UsageCleanupModeDeleteLogs
+	}
+	return strings.TrimSpace(filters.Mode)
 }
 
 func (s *UsageCleanupService) CancelTask(ctx context.Context, taskID int64, canceledBy int64) error {

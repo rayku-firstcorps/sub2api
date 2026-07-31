@@ -65,3 +65,20 @@ func TestUpdateSettingsSMTPFromAliasIsWritable(t *testing.T) {
 
 	require.Equal(t, "new@example.com", repo.values[service.SettingKeySMTPFrom])
 }
+
+func TestUpdateSettingsDisablesUsageLogRequestContextRecording(t *testing.T) {
+	service.SetUsageLogRequestContextEnabled(true)
+	t.Cleanup(func() { service.SetUsageLogRequestContextEnabled(true) })
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyUsageLogRequestContextEnabled: "true",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"usage_log_request_context_enabled": false}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyUsageLogRequestContextEnabled])
+
+	contextJSON, truncated, bytesLen := service.PrepareUsageLogRequestContext([]byte(`{"model":"gpt-5.1"}`))
+	require.Nil(t, contextJSON)
+	require.False(t, truncated)
+	require.Nil(t, bytesLen)
+}

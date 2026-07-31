@@ -439,6 +439,35 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatchQueryError(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageCleanupRepositoryClearUsageRequestContextsBatch(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageCleanupRepository{sql: db}
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+
+	mock.ExpectQuery("(?s)request_context_json IS NOT NULL.*FOR UPDATE SKIP LOCKED.*UPDATE usage_logs AS logs.*request_context_json = NULL.*request_context_truncated = FALSE.*request_context_bytes = NULL").
+		WithArgs(start, end, 500).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(1)).AddRow(int64(2)))
+
+	updated, err := repo.ClearUsageRequestContextsBatch(context.Background(), service.UsageCleanupFilters{
+		StartTime: start,
+		EndTime:   end,
+	}, 500)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), updated)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageCleanupRepositoryClearUsageRequestContextsBatchRejectsLargeBatch(t *testing.T) {
+	db, _ := newSQLMock(t)
+	repo := &usageCleanupRepository{sql: db}
+	_, err := repo.ClearUsageRequestContextsBatch(context.Background(), service.UsageCleanupFilters{
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	}, 501)
+	require.Error(t, err)
+}
+
 func TestBuildUsageCleanupWhere(t *testing.T) {
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
