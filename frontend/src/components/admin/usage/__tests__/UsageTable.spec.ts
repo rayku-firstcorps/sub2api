@@ -4,12 +4,17 @@ const ipGeoMocks = vi.hoisted(() => ({
   fetchBatch: vi.fn(),
 }))
 
+const appStoreMocks = vi.hoisted(() => ({
+  showSuccess: vi.fn(),
+  showError: vi.fn(),
+}))
+
 vi.mock('@/utils/ipGeoLookup', () => ipGeoMocks)
+vi.mock('@/stores/app', () => ({ useAppStore: () => appStoreMocks }))
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import { createPinia } from 'pinia'
 
 import UsageTable from '../UsageTable.vue'
 
@@ -52,6 +57,15 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
+	'admin.usage.requestIdCopied': 'Request ID copied',
+	'keys.copied': 'Copied',
+	'keys.copyToClipboard': 'Copy to clipboard',
+	'common.copyFailed': 'Copy failed',
+	'usage.requestedModel': 'Requested',
+	'usage.sentUpstreamModel': 'Sent upstream',
+	'usage.upstreamResponseModel': 'Upstream response',
+	'usage.modelVariant': 'Possible version variant',
+	'usage.modelMismatch': 'Different model',
   'usage.model': 'Model',
   'usage.type': 'Type',
   'admin.usage.requestContext': 'Request Context',
@@ -85,24 +99,12 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-request_id" :row="row" />
         <slot name="cell-context" :row="row" />
       </div>
     </div>
   `,
 }
-
-const mountUsageTable = (props: Record<string, unknown>) => mount(UsageTable, {
-  props,
-  global: {
-    plugins: [createPinia()],
-    stubs: {
-      DataTable: DataTableStub,
-      EmptyState: true,
-      Icon: true,
-      Teleport: true,
-    },
-  },
-})
 
 const baseImageRow = {
   request_id: 'req-admin-image',
@@ -195,10 +197,20 @@ describe('admin UsageTable tooltip', () => {
       output_tokens: 101,
     }
 
-    const wrapper = mountUsageTable({
-      data: [row],
-      loading: false,
-      columns: [],
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
     })
 
     const tooltipTriggers = wrapper.findAll('.group.relative')
@@ -236,16 +248,68 @@ describe('admin UsageTable tooltip', () => {
       output_tokens: 0,
     }
 
-    const wrapper = mountUsageTable({
-      data: [row],
-      loading: false,
-      columns: [],
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
     })
 
     const text = wrapper.text()
     expect(text).toContain('claude-sonnet-4')
     expect(text).toContain('claude-sonnet-4-20250514')
   })
+
+	it.each([
+		{
+			name: 'possible version variant',
+			responseModel: 'gpt-5.5-2026-08-01',
+			expectedBadge: 'Possible version variant',
+		},
+		{
+			name: 'different upstream model',
+			responseModel: 'gpt-5.4',
+			expectedBadge: 'Different model',
+		},
+	])('shows a compact upstream response audit marker for $name', ({ responseModel, expectedBadge }) => {
+		const wrapper = mount(UsageTable, {
+			props: {
+				data: [{
+					request_id: `req-${responseModel}`,
+					model: 'gpt-5.6-sol',
+					upstream_model: 'gpt-5.5',
+					model_mapping_chain: 'gpt-5.6-sol→gpt-5.5',
+					upstream_response_model: responseModel,
+					upstream_model_mismatch: true,
+				}],
+				loading: false,
+				columns: [],
+			},
+			global: {
+				stubs: {
+					DataTable: DataTableStub,
+					EmptyState: true,
+					Icon: true,
+					Teleport: true,
+				},
+			},
+		})
+
+		const text = wrapper.text()
+		expect(text).toContain('gpt-5.6-sol')
+		expect(text).toContain('gpt-5.5')
+		expect(text).toContain(responseModel)
+		expect(text).toContain(expectedBadge)
+	})
 
   it.each([
     {
@@ -298,10 +362,20 @@ describe('admin UsageTable tooltip', () => {
       expected: ['legacy unstandardized: 512x512', 'Legacy record', 'unknown'],
     },
   ])('shows image usage metadata for $name', async ({ row, expected }) => {
-    const wrapper = mountUsageTable({
-      data: [row],
-      loading: false,
-      columns: [],
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
     })
 
     await wrapper.find('.group.relative').trigger('mouseenter')
@@ -321,21 +395,31 @@ describe('admin UsageTable tooltip', () => {
   })
 
   it('displays historical image rows with missing billing_mode as image usage without a 2K fallback', async () => {
-    const wrapper = mountUsageTable({
-      data: [
-        {
-          ...baseImageRow,
-          request_id: 'req-admin-legacy-missing-image',
-          billing_mode: null,
-          image_size: null,
-          image_input_size: null,
-          image_output_size: null,
-          image_size_source: null,
-          image_size_breakdown: null,
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-admin-legacy-missing-image',
+            billing_mode: null,
+            image_size: null,
+            image_input_size: null,
+            image_output_size: null,
+            image_size_source: null,
+            image_size_breakdown: null,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
         },
-      ],
-      loading: false,
-      columns: [],
+      },
     })
 
     await wrapper.find('.group.relative').trigger('mouseenter')
@@ -377,10 +461,20 @@ describe('admin UsageTable tooltip', () => {
       request_context_bytes: 2048,
     }
 
-    const wrapper = mountUsageTable({
-      data: [row],
-      loading: false,
-      columns: [],
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
     })
 
     const contextButton = wrapper.find('button[title="View request context"]')
@@ -404,6 +498,40 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Export')
     expect(text).toContain('old user prompt')
     expect(text).toContain('[REDACTED]')
+  })
+})
+
+describe('admin UsageTable request ID column', () => {
+  beforeEach(() => {
+    appStoreMocks.showSuccess.mockReset()
+    appStoreMocks.showError.mockReset()
+  })
+
+  it('renders and copies the request ID', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, request_id: 'req-admin-visible-id' }],
+        loading: false,
+        columns: [{ key: 'request_id', label: 'Request ID' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('req-admin-visible-id')
+    await wrapper.get('button[title="Copy to clipboard"]').trigger('click')
+
+    expect(writeText).toHaveBeenCalledWith('req-admin-visible-id')
+    expect(appStoreMocks.showSuccess).toHaveBeenCalledWith('Request ID copied')
   })
 })
 

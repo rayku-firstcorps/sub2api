@@ -55,7 +55,7 @@ describe('useGrokOAuth.exchangeAuthCode', () => {
 })
 
 describe('useGrokOAuth.buildCredentials', () => {
-  it('persists the official xAI API for OAuth inference', () => {
+   it('persists the official xAI API without leaking sso/password', () => {
     const oauth = useGrokOAuth()
 
     const credentials = oauth.buildCredentials({
@@ -64,9 +64,19 @@ describe('useGrokOAuth.buildCredentials', () => {
       expires_at: 1_900_000_000,
       client_id: 'client-id',
       scope: 'openid grok-cli:access',
-      email: 'grok@example.com'
-    })
+      email: 'grok@example.com',
+      password: 'super-secret',
+      sso_token: 'sso-cookie',
+      sso: 'sso-cookie',
+      'sso-rw': 'sso-cookie'
+    } as any)
 
+    expect(credentials.access_token).toBe('access-token')
+    expect(credentials.email).toBe('grok@example.com')
     expect(credentials.base_url).toBe('https://api.x.ai/v1')
+    expect(credentials).not.toHaveProperty('password')
+    expect(credentials).not.toHaveProperty('sso_token')
+    expect(credentials).not.toHaveProperty('sso')
+    expect(credentials).not.toHaveProperty('sso-rw')
   })
 })
