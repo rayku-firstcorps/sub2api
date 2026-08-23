@@ -76,6 +76,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	SetOpsUpstreamModel(c, upstreamModel)
 	grokCacheIdentity := ""
 	if account.Platform == PlatformGrok {
 		// Resolve before image bridging or other body rewrites so the fallback is
@@ -157,6 +158,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 			return nil, fmt.Errorf("normalize Grok chat reasoning effort: %w", err)
 		}
 	}
+	upstreamBody = applyOllamaCloudRawChatCompletionsRequest(account, upstreamBody)
 
 	logger.L().Debug("openai chat_completions raw: forwarding without protocol conversion",
 		zap.Int64("account_id", account.ID),
@@ -334,6 +336,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				}
 			}
 		}
+		line = applyOllamaCloudRawChatCompletionsSSELine(account, line)
 
 		writeLine(line)
 		if line == "" {
@@ -465,6 +468,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))
 		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
 	}
+	respBody = applyOllamaCloudRawChatCompletionsResponse(account, respBody)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
