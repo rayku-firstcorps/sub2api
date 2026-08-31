@@ -739,6 +739,7 @@ export interface SystemSettings {
   // Allow user view error requests
   allow_user_view_error_requests: boolean;
   usage_log_request_context_enabled: boolean;
+  usage_log_request_context_skip_api_key_ids?: number[];
 }
 
 export interface UpdateSettingsRequest {
@@ -1040,6 +1041,7 @@ export interface UpdateSettingsRequest {
 
   allow_user_view_error_requests?: boolean;
   usage_log_request_context_enabled?: boolean;
+  usage_log_request_context_skip_api_key_ids?: number[];
 }
 
 /**

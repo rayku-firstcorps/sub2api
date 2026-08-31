@@ -311,6 +311,8 @@ type SystemSettings struct {
 
 	// 是否在用量日志中记录请求上下文快照
 	UsageLogRequestContextEnabled bool
+	// 跳过请求上下文记录的 API Key ID 白名单
+	UsageLogRequestContextSkipAPIKeyIDs []int64
 }
 
 type DefaultSubscriptionSetting struct {

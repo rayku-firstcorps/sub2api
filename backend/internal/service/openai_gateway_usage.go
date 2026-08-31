@@ -146,6 +146,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
+	if apiKey != nil && ShouldSkipUsageLogRequestContext(apiKey.ID) {
+		input.RequestContextJSON = nil
+		input.RequestContextTruncated = false
+		input.RequestContextBytes = nil
+	}
 	if !isGrokVideoUsageResult(result, nil) {
 		ApplyOpenAIImageBillingResolution(result)
 	}
@@ -324,31 +329,31 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	usageLog := &UsageLog{
-		UserID:                user.ID,
-		APIKeyID:              apiKey.ID,
-		AccountID:             account.ID,
-		RequestID:             requestID,
-		Model:                 result.Model,
-		RequestedModel:        requestedModel,
-		UpstreamModel:         optionalTrimmedStringPtr(result.UpstreamModel),
-		UpstreamResponseModel: optionalTrimmedStringPtr(result.UpstreamResponseModel),
-		UpstreamModelMismatch: upstreamModelMismatch(sentModel, result.UpstreamResponseModel),
-		ServiceTier:           result.ServiceTier,
-		ReasoningEffort:       result.ReasoningEffort,
-		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
-		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:           actualInputTokens,
-		OutputTokens:          result.Usage.OutputTokens,
-		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:       result.Usage.CacheReadInputTokens,
-		ImageInputTokens:      result.Usage.ImageInputTokens,
-		ImageOutputTokens:     result.Usage.ImageOutputTokens,
-		ImageCount:            result.ImageCount,
-		ImageSize:             optionalTrimmedStringPtr(result.ImageSize),
-		ImageInputSize:        optionalTrimmedStringPtr(result.ImageInputSize),
-		ImageOutputSize:       optionalTrimmedStringPtr(result.ImageOutputSize),
-		ImageSizeSource:       optionalTrimmedStringPtr(result.ImageSizeSource),
-		ImageSizeBreakdown:    result.ImageSizeBreakdown,
+		UserID:                  user.ID,
+		APIKeyID:                apiKey.ID,
+		AccountID:               account.ID,
+		RequestID:               requestID,
+		Model:                   result.Model,
+		RequestedModel:          requestedModel,
+		UpstreamModel:           optionalTrimmedStringPtr(result.UpstreamModel),
+		UpstreamResponseModel:   optionalTrimmedStringPtr(result.UpstreamResponseModel),
+		UpstreamModelMismatch:   upstreamModelMismatch(sentModel, result.UpstreamResponseModel),
+		ServiceTier:             result.ServiceTier,
+		ReasoningEffort:         result.ReasoningEffort,
+		InboundEndpoint:         optionalTrimmedStringPtr(input.InboundEndpoint),
+		UpstreamEndpoint:        optionalTrimmedStringPtr(input.UpstreamEndpoint),
+		InputTokens:             actualInputTokens,
+		OutputTokens:            result.Usage.OutputTokens,
+		CacheCreationTokens:     result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:         result.Usage.CacheReadInputTokens,
+		ImageInputTokens:        result.Usage.ImageInputTokens,
+		ImageOutputTokens:       result.Usage.ImageOutputTokens,
+		ImageCount:              result.ImageCount,
+		ImageSize:               optionalTrimmedStringPtr(result.ImageSize),
+		ImageInputSize:          optionalTrimmedStringPtr(result.ImageInputSize),
+		ImageOutputSize:         optionalTrimmedStringPtr(result.ImageOutputSize),
+		ImageSizeSource:         optionalTrimmedStringPtr(result.ImageSizeSource),
+		ImageSizeBreakdown:      result.ImageSizeBreakdown,
 		RequestContextJSON:      input.RequestContextJSON,
 		RequestContextTruncated: input.RequestContextTruncated,
 		RequestContextBytes:     input.RequestContextBytes,

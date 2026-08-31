@@ -390,9 +390,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 
-		AccountSchedulingThresholds: settings.AccountSchedulingThresholds,
-		AllowUserViewErrorRequests:    settings.AllowUserViewErrorRequests,
-		UsageLogRequestContextEnabled: settings.UsageLogRequestContextEnabled,
+		AccountSchedulingThresholds:         settings.AccountSchedulingThresholds,
+		AllowUserViewErrorRequests:          settings.AllowUserViewErrorRequests,
+		UsageLogRequestContextEnabled:       settings.UsageLogRequestContextEnabled,
+		UsageLogRequestContextSkipAPIKeyIDs: settings.UsageLogRequestContextSkipAPIKeyIDs,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)

@@ -368,11 +368,15 @@ func (s *SettingService) LoadUsageLogRequestContextSetting(ctx context.Context) 
 	if s == nil || s.settingRepo == nil {
 		return nil
 	}
-	values, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyUsageLogRequestContextEnabled})
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyUsageLogRequestContextEnabled,
+		SettingKeyUsageLogRequestContextSkipAPIKeyIDs,
+	})
 	if err != nil {
 		return fmt.Errorf("get usage log request context setting: %w", err)
 	}
 	SetUsageLogRequestContextEnabled(!isFalseSettingValue(values[SettingKeyUsageLogRequestContextEnabled]))
+	SetUsageLogRequestContextSkipAPIKeyIDs(parseUsageLogRequestContextSkipAPIKeyIDs(values[SettingKeyUsageLogRequestContextSkipAPIKeyIDs]))
 	return nil
 }
 

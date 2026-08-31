@@ -342,8 +342,9 @@ type SystemSettings struct {
 	AccountSchedulingThresholds map[string]int `json:"account_scheduling_thresholds,omitempty"`
 
 	// 允许终端用户在用量页查看自己的失败请求
-	AllowUserViewErrorRequests    bool `json:"allow_user_view_error_requests"`
-	UsageLogRequestContextEnabled bool `json:"usage_log_request_context_enabled"`
+	AllowUserViewErrorRequests          bool    `json:"allow_user_view_error_requests"`
+	UsageLogRequestContextEnabled       bool    `json:"usage_log_request_context_enabled"`
+	UsageLogRequestContextSkipAPIKeyIDs []int64 `json:"usage_log_request_context_skip_api_key_ids"`
 }
 
 type DefaultSubscriptionSetting struct {

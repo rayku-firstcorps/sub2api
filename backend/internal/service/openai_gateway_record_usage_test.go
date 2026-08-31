@@ -604,6 +604,39 @@ func TestOpenAIGatewayServiceRecordUsage_IncludesEndpointMetadata(t *testing.T) 
 	require.Equal(t, "/v1/responses", *usageRepo.lastLog.UpstreamEndpoint)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_SkipRequestContextForWhitelistedAPIKey(t *testing.T) {
+	SetUsageLogRequestContextSkipAPIKeyIDs([]int64{1005})
+	t.Cleanup(func() { SetUsageLogRequestContextSkipAPIKeyIDs(nil) })
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	requestContext := `{"model":"gpt-5.1","messages":[{"role":"user","content":"hello"}]}`
+	requestContextBytes := len(requestContext)
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_request_context_skip",
+			Usage:     OpenAIUsage{InputTokens: 10, OutputTokens: 2},
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey:                  &APIKey{ID: 1005, Group: &Group{RateMultiplier: 1}},
+		User:                    &User{ID: 2005},
+		Account:                 &Account{ID: 3005, Type: AccountTypeAPIKey},
+		RequestContextJSON:      &requestContext,
+		RequestContextTruncated: true,
+		RequestContextBytes:     &requestContextBytes,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Nil(t, usageRepo.lastLog.RequestContextJSON)
+	require.False(t, usageRepo.lastLog.RequestContextTruncated)
+	require.Nil(t, usageRepo.lastLog.RequestContextBytes)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_IncludesRequestContextSnapshot(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

@@ -32,6 +32,41 @@ func TestPrepareUsageLogRequestContext_DisabledSkipsSnapshot(t *testing.T) {
 	require.Nil(t, bytesLen)
 }
 
+func TestPrepareUsageLogRequestContextForAPIKey_SkipWhitelist(t *testing.T) {
+	SetUsageLogRequestContextEnabled(true)
+	SetUsageLogRequestContextSkipAPIKeyIDs([]int64{42, 7})
+	t.Cleanup(func() { SetUsageLogRequestContextSkipAPIKeyIDs(nil) })
+
+	raw := []byte(`{"model":"gpt-5.1"}`)
+	skipped, truncated, bytesLen := PrepareUsageLogRequestContextForAPIKey(42, raw)
+	require.Nil(t, skipped)
+	require.False(t, truncated)
+	require.Nil(t, bytesLen)
+
+	recorded, truncated, bytesLen := PrepareUsageLogRequestContextForAPIKey(41, raw)
+	require.NotNil(t, recorded)
+	require.False(t, truncated)
+	require.NotNil(t, bytesLen)
+}
+
+func TestNormalizeUsageLogRequestContextSkipAPIKeyIDs(t *testing.T) {
+	got, err := NormalizeUsageLogRequestContextSkipAPIKeyIDs([]int64{3, 0, 1, 3, -2, 2})
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 2, 3}, got)
+
+	empty, err := NormalizeUsageLogRequestContextSkipAPIKeyIDs(nil)
+	require.NoError(t, err)
+	require.NotNil(t, empty)
+	require.Empty(t, empty)
+
+	tooMany := make([]int64, usageLogRequestContextSkipAPIKeyIDsMax+1)
+	for i := range tooMany {
+		tooMany[i] = int64(i + 1)
+	}
+	_, err = NormalizeUsageLogRequestContextSkipAPIKeyIDs(tooMany)
+	require.Error(t, err)
+}
+
 func TestPrepareUsageLogRequestContext_TruncatesLargeMessages(t *testing.T) {
 	body := map[string]any{
 		"model":    "gpt-5.1",

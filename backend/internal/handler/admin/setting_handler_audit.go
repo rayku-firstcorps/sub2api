@@ -603,6 +603,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.UsageLogRequestContextEnabled != after.UsageLogRequestContextEnabled {
 		changed = append(changed, service.SettingKeyUsageLogRequestContextEnabled)
 	}
+	if !equalInt64Slice(before.UsageLogRequestContextSkipAPIKeyIDs, after.UsageLogRequestContextSkipAPIKeyIDs) {
+		changed = append(changed, service.SettingKeyUsageLogRequestContextSkipAPIKeyIDs)
+	}
 	// Default platform quotas（JSON map，整体比较）
 	if !equalPlatformQuotaSettings(before.DefaultPlatformQuotas, after.DefaultPlatformQuotas) {
 		changed = append(changed, service.SettingKeyDefaultPlatformQuotas)
@@ -736,6 +739,18 @@ func platformQuotasValueOrDefault(value, fallback map[string]*service.DefaultPla
 }
 
 func equalStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalInt64Slice(a, b []int64) bool {
 	if len(a) != len(b) {
 		return false
 	}

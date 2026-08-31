@@ -711,3 +711,7 @@ const SettingKeyAllowUserViewErrorRequests = "allow_user_view_error_requests"
 // SettingKeyUsageLogRequestContextEnabled controls whether new usage logs store
 // sanitized request context snapshots. Default true for backward compatibility.
 const SettingKeyUsageLogRequestContextEnabled = "usage_log_request_context_enabled"
+
+// SettingKeyUsageLogRequestContextSkipAPIKeyIDs is a JSON array of API key IDs
+// that skip request-context snapshots even when recording is enabled.
+const SettingKeyUsageLogRequestContextSkipAPIKeyIDs = "usage_log_request_context_skip_api_key_ids"

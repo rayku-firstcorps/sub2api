@@ -540,6 +540,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
 	updates[SettingKeyUsageLogRequestContextEnabled] = strconv.FormatBool(settings.UsageLogRequestContextEnabled)
+	skipAPIKeyIDs, err := NormalizeUsageLogRequestContextSkipAPIKeyIDs(settings.UsageLogRequestContextSkipAPIKeyIDs)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_USAGE_LOG_REQUEST_CONTEXT_SKIP_API_KEY_IDS", err.Error())
+	}
+	settings.UsageLogRequestContextSkipAPIKeyIDs = skipAPIKeyIDs
+	skipAPIKeyIDsJSON, err := json.Marshal(skipAPIKeyIDs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal usage log request context skip API key IDs: %w", err)
+	}
+	updates[SettingKeyUsageLogRequestContextSkipAPIKeyIDs] = string(skipAPIKeyIDsJSON)
 
 	return updates, nil
 }
@@ -685,6 +695,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		return
 	}
 	SetUsageLogRequestContextEnabled(settings.UsageLogRequestContextEnabled)
+	SetUsageLogRequestContextSkipAPIKeyIDs(settings.UsageLogRequestContextSkipAPIKeyIDs)
 
 	// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
 	versionBoundsSF.Forget("version_bounds")

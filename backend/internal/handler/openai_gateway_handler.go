@@ -716,7 +716,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 			requestPayloadHash := service.HashUsageRequestPayload(body)
-			requestContextJSON, requestContextTruncated, requestContextBytes := service.PrepareUsageLogRequestContext(body)
+			requestContextJSON, requestContextTruncated, requestContextBytes := service.PrepareUsageLogRequestContextForAPIKey(apiKey.ID, body)
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, res)
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
@@ -1292,7 +1292,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 			requestPayloadHash := service.HashUsageRequestPayload(body)
-			requestContextJSON, requestContextTruncated, requestContextBytes := service.PrepareUsageLogRequestContext(body)
+			requestContextJSON, requestContextTruncated, requestContextBytes := service.PrepareUsageLogRequestContextForAPIKey(apiKey.ID, body)
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, res)
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
@@ -2475,7 +2475,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				sessionID := service.ExtractClientSessionID(c)
 				turnRecordPricingAt := turnPricing.currentOr(turnStart)
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-				requestContextJSON, requestContextTruncated, requestContextBytes := service.PrepareUsageLogRequestContext(firstMessage)
+				requestContextJSON, requestContextTruncated, requestContextBytes := service.PrepareUsageLogRequestContextForAPIKey(apiKey.ID, firstMessage)
 				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
 						Result:                  result,

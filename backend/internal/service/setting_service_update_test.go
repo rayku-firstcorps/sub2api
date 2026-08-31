@@ -235,6 +235,25 @@ func TestSettingService_LoadUsageLogRequestContextSetting(t *testing.T) {
 	require.Nil(t, contextJSON)
 }
 
+func TestSettingService_LoadUsageLogRequestContextSkipAPIKeyIDs(t *testing.T) {
+	SetUsageLogRequestContextEnabled(true)
+	SetUsageLogRequestContextSkipAPIKeyIDs(nil)
+	t.Cleanup(func() {
+		SetUsageLogRequestContextEnabled(true)
+		SetUsageLogRequestContextSkipAPIKeyIDs(nil)
+	})
+	svc := NewSettingService(&settingGetAllRepoStub{values: map[string]string{
+		SettingKeyUsageLogRequestContextEnabled:       "true",
+		SettingKeyUsageLogRequestContextSkipAPIKeyIDs: "[42,7]",
+	}}, &config.Config{})
+
+	require.NoError(t, svc.LoadUsageLogRequestContextSetting(context.Background()))
+	skipped, _, _ := PrepareUsageLogRequestContextForAPIKey(42, []byte(`{"model":"gpt-5.1"}`))
+	require.Nil(t, skipped)
+	recorded, _, _ := PrepareUsageLogRequestContextForAPIKey(8, []byte(`{"model":"gpt-5.1"}`))
+	require.NotNil(t, recorded)
+}
+
 func (s *defaultSubGroupReaderStub) GetByID(ctx context.Context, id int64) (*Group, error) {
 	s.calls = append(s.calls, id)
 	if err, ok := s.errBy[id]; ok {

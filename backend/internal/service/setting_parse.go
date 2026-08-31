@@ -261,8 +261,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse:      "",
 		SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky:         "",
 
-		SettingKeyAllowUserViewErrorRequests:    "false",
-		SettingKeyUsageLogRequestContextEnabled: "true",
+		SettingKeyAllowUserViewErrorRequests:          "false",
+		SettingKeyUsageLogRequestContextEnabled:       "true",
+		SettingKeyUsageLogRequestContextSkipAPIKeyIDs: "[]",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -973,7 +974,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 	result.UsageLogRequestContextEnabled = !isFalseSettingValue(settings[SettingKeyUsageLogRequestContextEnabled])
+	result.UsageLogRequestContextSkipAPIKeyIDs = parseUsageLogRequestContextSkipAPIKeyIDs(settings[SettingKeyUsageLogRequestContextSkipAPIKeyIDs])
 	SetUsageLogRequestContextEnabled(result.UsageLogRequestContextEnabled)
+	SetUsageLogRequestContextSkipAPIKeyIDs(result.UsageLogRequestContextSkipAPIKeyIDs)
 
 	// Publish Grok default model_mapping options for accounts with empty mapping.
 	xai.SetRuntimeModelMappingOptions(xai.ModelMappingOptions{

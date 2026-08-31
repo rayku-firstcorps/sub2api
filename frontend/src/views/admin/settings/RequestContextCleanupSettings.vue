@@ -18,6 +18,47 @@
         />
       </div>
 
+      <div class="border-b border-gray-100 pb-5 dark:border-dark-700">
+        <div class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ text.skipWhitelist }}</div>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ text.skipWhitelistHint }}</p>
+        <div v-if="skipAPIKeyIDs.length > 0" class="mt-3 flex flex-wrap gap-2">
+          <span
+            v-for="id in skipAPIKeyIDs"
+            :key="id"
+            class="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-2.5 py-1.5 text-xs text-gray-700 dark:bg-dark-600 dark:text-gray-200"
+          >
+            <span class="font-medium">#{{ id }}</span>
+            <button
+              type="button"
+              class="rounded text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+              :disabled="savingSkip"
+              :aria-label="text.removeID"
+              @click="removeSkipID(id)"
+            >
+              <Icon name="x" size="xs" :stroke-width="2" />
+            </button>
+          </span>
+        </div>
+        <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            v-model="skipDraft"
+            type="text"
+            class="input w-full sm:w-72"
+            :placeholder="text.skipPlaceholder"
+            :disabled="savingSkip"
+            @keydown.enter.prevent="addSkipIDs"
+          />
+          <button
+            type="button"
+            class="btn btn-secondary"
+            :disabled="savingSkip || !skipDraft.trim()"
+            @click="addSkipIDs"
+          >
+            {{ text.addID }}
+          </button>
+        </div>
+      </div>
+
       <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -90,12 +131,22 @@ const task = ref<UsageCleanupTask | null>(null)
 const recordingEnabled = ref(true)
 const loadingRecording = ref(true)
 const savingRecording = ref(false)
+const skipAPIKeyIDs = ref<number[]>([])
+const skipDraft = ref('')
+const savingSkip = ref(false)
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 
 const zh = computed(() => locale.value.startsWith('zh'))
 const text = computed(() => zh.value ? {
   title: '请求上下文清理', description: '清空历史用量记录中的请求上下文，保留计费、统计和审计数据。',
   recording: '记录请求上下文', recordingHint: '关闭后停止记录新的请求上下文，不影响用量和计费；历史上下文不会自动删除。',
+  skipWhitelist: '不记录上下文的 API Key 白名单',
+  skipWhitelistHint: '填写 API Key ID。白名单中的 Key 不会写入请求上下文，用量和计费不受影响。可一次粘贴多个 ID，用逗号或空格分隔。',
+  skipPlaceholder: '例如 12, 34',
+  addID: '添加',
+  removeID: '移除',
+  invalidIDs: '请输入有效的 API Key ID（正整数）。',
+  skipSaved: '请求上下文白名单已更新。',
   retentionDays: '保留最近天数', retentionHint: '仅处理此天数之前的记录，可设置 1-365 天。',
   start: '启动清理', starting: '正在启动...', running: '清理进行中', status: '最近任务',
   processed: '已清理记录', finished: '完成时间', idle: '尚未运行', pending: '等待执行',
@@ -107,6 +158,13 @@ const text = computed(() => zh.value ? {
 } : {
   title: 'Request context cleanup', description: 'Clear request context from historical usage rows while preserving billing, statistics, and audit data.',
   recording: 'Record request context', recordingHint: 'When disabled, new request context is not stored. Usage and billing are unaffected, and historical context is not deleted.',
+  skipWhitelist: 'API key whitelist without request context',
+  skipWhitelistHint: 'Enter API key IDs. Keys on this list skip request-context storage. Usage and billing are unaffected. You can paste multiple IDs separated by commas or spaces.',
+  skipPlaceholder: 'e.g. 12, 34',
+  addID: 'Add',
+  removeID: 'Remove',
+  invalidIDs: 'Enter valid API key IDs (positive integers).',
+  skipSaved: 'Request context whitelist updated.',
   retentionDays: 'Keep recent days', retentionHint: 'Only rows older than this value are processed (1-365 days).',
   start: 'Start cleanup', starting: 'Starting...', running: 'Cleanup in progress', status: 'Latest task',
   processed: 'Contexts cleared', finished: 'Finished', idle: 'Not run yet', pending: 'Pending',
@@ -140,15 +198,69 @@ async function loadStatus(): Promise<void> {
   }
 }
 
+function normalizeSkipIDs(ids: number[] | undefined): number[] {
+  const unique = new Set<number>()
+  for (const id of ids ?? []) {
+    if (Number.isInteger(id) && id > 0) unique.add(id)
+  }
+  return [...unique].sort((a, b) => a - b)
+}
+
+function parseSkipDraft(raw: string): number[] {
+  const ids: number[] = []
+  for (const token of raw.split(/[\s,;]+/)) {
+    if (!token) continue
+    if (!/^\d+$/.test(token)) return []
+    const id = Number(token)
+    if (!Number.isInteger(id) || id <= 0) return []
+    ids.push(id)
+  }
+  return ids
+}
+
 async function loadRecording(): Promise<void> {
   try {
     const settings = await adminAPI.settings.getSettings()
     recordingEnabled.value = settings.usage_log_request_context_enabled !== false
+    skipAPIKeyIDs.value = normalizeSkipIDs(settings.usage_log_request_context_skip_api_key_ids)
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, 'Failed to load request context recording setting'))
   } finally {
     loadingRecording.value = false
   }
+}
+
+async function saveSkipIDs(next: number[]): Promise<void> {
+  const previous = skipAPIKeyIDs.value
+  const normalized = normalizeSkipIDs(next)
+  skipAPIKeyIDs.value = normalized
+  savingSkip.value = true
+  try {
+    const settings = await adminAPI.settings.updateSettings({
+      usage_log_request_context_skip_api_key_ids: normalized,
+    })
+    skipAPIKeyIDs.value = normalizeSkipIDs(settings.usage_log_request_context_skip_api_key_ids)
+    appStore.showSuccess(text.value.skipSaved)
+  } catch (error) {
+    skipAPIKeyIDs.value = previous
+    appStore.showError(extractApiErrorMessage(error, 'Failed to update request context whitelist'))
+  } finally {
+    savingSkip.value = false
+  }
+}
+
+async function addSkipIDs(): Promise<void> {
+  const parsed = parseSkipDraft(skipDraft.value)
+  if (parsed.length === 0) {
+    appStore.showError(text.value.invalidIDs)
+    return
+  }
+  skipDraft.value = ''
+  await saveSkipIDs([...skipAPIKeyIDs.value, ...parsed])
+}
+
+async function removeSkipID(id: number): Promise<void> {
+  await saveSkipIDs(skipAPIKeyIDs.value.filter((item) => item !== id))
 }
 
 async function saveRecording(enabled: boolean): Promise<void> {

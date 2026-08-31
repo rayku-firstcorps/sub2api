@@ -83,6 +83,34 @@ func TestUpdateSettingsDisablesUsageLogRequestContextRecording(t *testing.T) {
 	require.Nil(t, bytesLen)
 }
 
+func TestUpdateSettingsSkipsUsageLogRequestContextForWhitelistedAPIKey(t *testing.T) {
+	service.SetUsageLogRequestContextEnabled(true)
+	service.SetUsageLogRequestContextSkipAPIKeyIDs(nil)
+	t.Cleanup(func() {
+		service.SetUsageLogRequestContextEnabled(true)
+		service.SetUsageLogRequestContextSkipAPIKeyIDs(nil)
+	})
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyUsageLogRequestContextEnabled: "true",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"usage_log_request_context_skip_api_key_ids": []int64{42, 7, 7},
+	}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, "[7,42]", repo.values[service.SettingKeyUsageLogRequestContextSkipAPIKeyIDs])
+
+	skipped, truncated, bytesLen := service.PrepareUsageLogRequestContextForAPIKey(42, []byte(`{"model":"gpt-5.1"}`))
+	require.Nil(t, skipped)
+	require.False(t, truncated)
+	require.Nil(t, bytesLen)
+
+	recorded, truncated, bytesLen := service.PrepareUsageLogRequestContextForAPIKey(8, []byte(`{"model":"gpt-5.1"}`))
+	require.NotNil(t, recorded)
+	require.False(t, truncated)
+	require.NotNil(t, bytesLen)
+}
+
 func TestUpdateSettingsGrokDefaultBaseURLModeIsWritable(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
 		service.SettingKeyGrokDefaultBaseURLMode: service.GrokDefaultBaseURLModeCLI,

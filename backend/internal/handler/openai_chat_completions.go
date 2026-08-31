@@ -281,7 +281,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, res)
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			requestPayloadHash := service.HashUsageRequestPayload(body)
-			requestContextJSON, requestContextTruncated, requestContextBytes := service.PrepareUsageLogRequestContext(body)
+			requestContextJSON, requestContextTruncated, requestContextBytes := service.PrepareUsageLogRequestContextForAPIKey(apiKey.ID, body)
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
