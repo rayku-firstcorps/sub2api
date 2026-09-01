@@ -1320,7 +1320,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					ChannelUsageFields:      clientRequestedUsageFields(c, channelMappingMsg, reqModel, res.UpstreamModel),
 					PricingAt:               pricingAt,
 					CyberBlocked:            cyberBlocked,
-					NativeCompactionV2:      nativeV2,
+					NativeCompactionV2:      false,
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.openai_gateway.messages"),
