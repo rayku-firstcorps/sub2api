@@ -661,6 +661,7 @@ func recordGrokMediaUsage(
 	clientIP := ip.GetClientIP(c)
 	sessionID := service.ExtractClientSessionID(c)
 	payloadForHash := body
+	requestContextJSON, requestContextTruncated, requestContextBytes := service.PrepareUsageLogRequestContextForAPIKey(apiKey.ID, body)
 	if len(payloadForHash) == 0 && strings.TrimSpace(requestID) != "" {
 		payloadForHash = []byte(requestID)
 	}
@@ -688,20 +689,23 @@ func recordGrokMediaUsage(
 	}
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-			Result:             result,
-			APIKey:             apiKey,
-			User:               apiKey.User,
-			Account:            account,
-			Subscription:       subscription,
-			InboundEndpoint:    inboundEndpoint,
-			UpstreamEndpoint:   upstreamEndpoint,
-			UserAgent:          userAgent,
-			IPAddress:          clientIP,
-			RequestPayloadHash: service.HashUsageRequestPayload(payloadForHash),
-			APIKeyService:      h.apiKeyService,
-			QuotaPlatform:      quotaPlatform,
-			SessionID:          sessionID,
-			ChannelUsageFields: channelUsageFields,
+			Result:                  result,
+			APIKey:                  apiKey,
+			User:                    apiKey.User,
+			Account:                 account,
+			Subscription:            subscription,
+			InboundEndpoint:         inboundEndpoint,
+			UpstreamEndpoint:        upstreamEndpoint,
+			UserAgent:               userAgent,
+			IPAddress:               clientIP,
+			RequestPayloadHash:      service.HashUsageRequestPayload(payloadForHash),
+			RequestContextJSON:      requestContextJSON,
+			RequestContextTruncated: requestContextTruncated,
+			RequestContextBytes:     requestContextBytes,
+			APIKeyService:           h.apiKeyService,
+			QuotaPlatform:           quotaPlatform,
+			SessionID:               sessionID,
+			ChannelUsageFields:      channelUsageFields,
 		}); err != nil {
 			if videoTaskID != "" {
 				if releaseErr := h.gatewayService.ReleaseGrokVideoBilling(ctx, videoTaskID, subject.UserID, apiKey.ID); releaseErr != nil {
