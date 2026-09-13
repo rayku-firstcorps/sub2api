@@ -420,7 +420,7 @@ func TestResponsesCredentialFailoverLoop(t *testing.T) {
 		require.Equal(t, []int64{801}, repo.errorIDs())
 		require.Equal(t, []int64{802}, upstream.accountHits())
 		requestURLs, authorization := upstream.requests()
-		require.Equal(t, []string{xai.DefaultBaseURL + "/responses"}, requestURLs)
+		require.Equal(t, []string{xai.DefaultCLIBaseURL + "/responses"}, requestURLs)
 		require.Equal(t, []string{"Bearer healthy-access"}, authorization)
 	})
 

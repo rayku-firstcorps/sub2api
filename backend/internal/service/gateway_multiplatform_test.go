@@ -1327,6 +1327,12 @@ func TestGatewayService_KiroAnthropicSchedulingCompatibility(t *testing.T) {
 	require.Len(t, accounts, 1)
 	require.Equal(t, PlatformKiro, accounts[0].Platform)
 
+	forcedAccounts, forcedMixed, err := svc.listSchedulableAccounts(ctx, &groupID, PlatformAnthropic, true)
+	require.NoError(t, err)
+	require.False(t, forcedMixed)
+	require.Len(t, forcedAccounts, 1)
+	require.Equal(t, PlatformKiro, forcedAccounts[0].Platform)
+
 	account, err := svc.selectAccountWithMixedScheduling(ctx, &groupID, "", "claude-opus-4-6", nil, PlatformAnthropic)
 	require.NoError(t, err)
 	require.NotNil(t, account)

@@ -684,7 +684,7 @@ const RuleTable = defineComponent({
                     modelValue: (rule as KeywordFilterWhitelistRule).target_rule_ids,
                     options: props.targetOptions || [],
                     'onUpdate:modelValue': (value: string[]) => {
-                      ;(rule as KeywordFilterWhitelistRule).target_rule_ids = value
+                      (rule as KeywordFilterWhitelistRule).target_rule_ids = value
                     },
                   }),
                 ])
@@ -1090,7 +1090,7 @@ function importJSON(text: string, defaultKind: RuleKind): ImportSummary {
       whitelist_rules?: Partial<KeywordFilterWhitelistRule>[]
     }
     if (Array.isArray(obj.keyword_rules) || Array.isArray(obj.whitelist_rules)) {
-      ;(obj.keyword_rules || []).forEach((rule, index) => {
+      (obj.keyword_rules || []).forEach((rule, index) => {
         imported.push({
           type: 'keyword',
           pattern: String(rule.pattern || ''),
@@ -1116,7 +1116,7 @@ function importJSON(text: string, defaultKind: RuleKind): ImportSummary {
         })
       })
     } else {
-      ;(obj.keywords || []).forEach((value, index) => {
+      (obj.keywords || []).forEach((value, index) => {
         imported.push({ type: 'keyword', pattern: String(value || ''), match_mode: 'auto', enabled: true, target_patterns: [], line: index + 1 })
       })
       ;(obj.whitelist || []).forEach((value, index) => {
