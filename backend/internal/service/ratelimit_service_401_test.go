@@ -19,6 +19,7 @@ type rateLimitAccountRepoStub struct {
 	setErrorCalls          int
 	tempCalls              int
 	rateLimitCalls         int
+	rateLimitedCalls       int
 	updateCredentialsCalls int
 	updateExtraCalls       int
 	lastCredentials        map[string]any
@@ -28,6 +29,8 @@ type rateLimitAccountRepoStub struct {
 	lastRateLimitResetAt   time.Time
 	lastErrorID            int64
 	lastTempID             int64
+	lastRateLimitedID      int64
+	lastRateLimitedAt      time.Time
 	tempErr                error
 }
 
@@ -48,6 +51,9 @@ func (r *rateLimitAccountRepoStub) SetTempUnschedulable(ctx context.Context, id 
 func (r *rateLimitAccountRepoStub) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	r.rateLimitCalls++
 	r.lastRateLimitResetAt = resetAt
+	r.rateLimitedCalls++
+	r.lastRateLimitedID = id
+	r.lastRateLimitedAt = resetAt
 	return nil
 }
 
