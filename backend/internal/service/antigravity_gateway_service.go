@@ -77,10 +77,7 @@ var (
 	modelCapacityExhaustedUntil = make(map[string]time.Time) // modelName -> cooldown until
 )
 
-const (
-	antigravityForwardBaseURLEnv  = "GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL"
-	antigravityFallbackSecondsEnv = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
-)
+const antigravityFallbackSecondsEnv = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
 
 const antigravityProjectIDFallbackCredentialKey = "antigravity_project_id"
 
