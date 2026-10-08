@@ -130,6 +130,8 @@ type SettingService struct {
 	openAICodexUASF                    singleflight.Group
 	openAICodexVersionCache            atomic.Value // *cachedOpenAICodexClientVersion
 	openAICodexVersionSF               singleflight.Group
+	claudeCodeVersionCache             atomic.Value // *cachedClaudeCodeClientVersion
+	claudeCodeVersionSF                singleflight.Group
 	openAICodexTicketEnabledCache      atomic.Value // *cachedOpenAICodexTicketEnabled
 	openAICodexTicketEnabledSF         singleflight.Group
 	openAICodexTicketHarvestProxyCache atomic.Value // *cachedOpenAICodexTicketHarvestProxy
@@ -137,6 +139,7 @@ type SettingService struct {
 	codexRestrictionPolicyCache        atomic.Value // *cachedCodexRestrictionPolicy
 	codexRestrictionPolicySF           singleflight.Group
 
+	cyberSessionBlockRuntimeMu    sync.Mutex
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
 

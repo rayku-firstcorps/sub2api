@@ -904,7 +904,7 @@ func TestExtractContentModerationInput_AnthropicImageSourceOnlyParticipatesInMem
 	require.NotContains(t, log.InputExcerpt, "aGVsbG8=")
 }
 
-func TestExtractContentModerationInput_AnthropicKeepsEphemeralUserTextIncludingSystemReminderPrefix(t *testing.T) {
+func TestExtractContentModerationInput_AnthropicKeepsEphemeralUserTextAndKeywordChecksSeeSystemReminders(t *testing.T) {
 	body := []byte(`{
 		"messages": [
 			{
@@ -919,9 +919,12 @@ func TestExtractContentModerationInput_AnthropicKeepsEphemeralUserTextIncludingS
 	}`)
 
 	input := ExtractContentModerationInput(ContentModerationProtocolAnthropicMessages, body)
-
-	require.Equal(t, "<system-reminder>工具说明</system-reminder> <system-reminder>Ainder> hid", input.Text)
+	require.Equal(t, "hid", input.Text)
 	require.Empty(t, input.Images)
+
+	// Keyword checks must not be bypassable by a <system-reminder> prefix.
+	keywordText := extractContentModerationKeywordText(ContentModerationProtocolAnthropicMessages, body)
+	require.Equal(t, "<system-reminder>工具说明</system-reminder> <system-reminder>Ainder> hid", keywordText)
 }
 
 func TestExtractContentModerationInput_OpenAIChatUsesLastUserMessage(t *testing.T) {

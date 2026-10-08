@@ -104,13 +104,13 @@ func collectAllResponsesInput(input gjson.Result, parts *[]string) {
 		addKeywordFilterText(parts, input.String())
 	case input.IsArray():
 		input.ForEach(func(_, item gjson.Result) bool {
-			if isResponsesUserTextItem(item) {
+			if (moderationTextCollector{}).isResponsesUserTextItem(item) {
 				collectResponsesKeywordItemText(item, parts)
 			}
 			return true
 		})
 	case input.IsObject():
-		if isResponsesUserTextItem(input) {
+		if (moderationTextCollector{}).isResponsesUserTextItem(input) {
 			collectResponsesKeywordItemText(input, parts)
 		}
 	}
@@ -280,13 +280,13 @@ func collectAllResponsesInputSegments(input gjson.Result, collector *keywordFilt
 		input.ForEach(func(_, item gjson.Result) bool {
 			currentIndex := messageIndex
 			messageIndex++
-			if isResponsesUserTextItem(item) {
+			if (moderationTextCollector{}).isResponsesUserTextItem(item) {
 				collectResponsesKeywordItemTextSegments(item, collector, currentIndex)
 			}
 			return true
 		})
 	case input.IsObject():
-		if isResponsesUserTextItem(input) {
+		if (moderationTextCollector{}).isResponsesUserTextItem(input) {
 			collectResponsesKeywordItemTextSegments(input, collector, 0)
 		}
 	}
@@ -429,7 +429,7 @@ func collectLastResponsesInputSegments(input gjson.Result, collector *keywordFil
 		lastIndex := -1
 		messageIndex := 0
 		input.ForEach(func(_, item gjson.Result) bool {
-			if isResponsesUserTextItem(item) {
+			if (moderationTextCollector{}).isResponsesUserTextItem(item) {
 				lastItem = item
 				lastIndex = messageIndex
 			}
@@ -440,7 +440,7 @@ func collectLastResponsesInputSegments(input gjson.Result, collector *keywordFil
 			collectResponsesKeywordItemTextSegments(lastItem, collector, lastIndex)
 		}
 	case input.IsObject():
-		if isResponsesUserTextItem(input) {
+		if (moderationTextCollector{}).isResponsesUserTextItem(input) {
 			collectResponsesKeywordItemTextSegments(input, collector, 0)
 		}
 	}
