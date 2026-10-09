@@ -1328,6 +1328,7 @@ function generateRoutedCodexFiles(
     openai: 'OpenAI',
     gemini: 'Gemini',
     antigravity: 'Antigravity',
+    kiro: 'Kiro',
     grok: 'Grok',
     kimi: 'Kimi',
     zhipu: 'Zhipu',
@@ -1335,6 +1336,8 @@ function generateRoutedCodexFiles(
     minimax: 'MiniMax',
     opencode_go: 'OpenCode',
     typesafe: 'TypeSafe / Jev',
+    command_code: 'Command Code',
+    cline: 'Cline',
     composite: 'Composite'
   }
   const label = labels[platform]
