@@ -20,7 +20,6 @@ import type {
   AdminDataImportResult,
   CodexSessionImportRequest,
   CodexSessionImportResult,
-  KiroImportRequest,
   OpenAICodexPATCreateRequest,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse,
@@ -777,11 +776,6 @@ export async function createOpenAICodexPAT(payload: OpenAICodexPATCreateRequest)
   return data
 }
 
-export async function importKiroAccounts(payload: KiroImportRequest): Promise<CodexSessionImportResult> {
-  const { data } = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/kiro', payload)
-  return data
-}
-
 /**
  * Get Antigravity default model mapping from backend
  * @returns Default model mapping (from -> to)
@@ -1179,7 +1173,6 @@ export const accountsAPI = {
   exportData,
   importData,
   importCodexSession,
-  importKiroAccounts,
   createOpenAICodexPAT,
   getAntigravityDefaultModelMapping,
   batchDelete,

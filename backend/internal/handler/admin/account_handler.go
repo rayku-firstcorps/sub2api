@@ -1499,13 +1499,6 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 				return nil, "", fmt.Errorf("failed to clear account error: %w", clearErr)
 			}
 		}
-	} else if account.Platform == service.PlatformKiro {
-		refresher := service.NewKiroTokenRefresher()
-		creds, refreshErr := refresher.Refresh(ctx, account)
-		if refreshErr != nil {
-			return nil, "", refreshErr
-		}
-		newCredentials = creds
 	} else if account.Platform == service.PlatformGrok {
 		if h.grokOAuthService == nil {
 			return nil, "", fmt.Errorf("grok oauth service is not configured")
@@ -2922,26 +2915,6 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	// Explicit account mappings expose their request-side names to connectivity tests.
 	if account.Platform == service.PlatformAntigravity {
 		response.Success(c, antigravityAccountTestModels(account.Credentials["model_mapping"]))
-		return
-	}
-
-	// Handle Kiro accounts: return models from DefaultKiroModelMapping
-	if account.Platform == service.PlatformKiro {
-		seen := make(map[string]bool)
-		var models []claude.Model
-		for id := range domain.DefaultKiroModelMapping {
-			if seen[id] {
-				continue
-			}
-			seen[id] = true
-			models = append(models, claude.Model{
-				ID:          id,
-				Type:        "model",
-				DisplayName: id,
-				CreatedAt:   "",
-			})
-		}
-		response.Success(c, models)
 		return
 	}
 

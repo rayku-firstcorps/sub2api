@@ -44,7 +44,6 @@ type GatewayHandler struct {
 	openAIGatewayService      *service.OpenAIGatewayService
 	geminiCompatService       *service.GeminiMessagesCompatService
 	antigravityGatewayService *service.AntigravityGatewayService
-	kiroGatewayService        *service.KiroGatewayService
 	userService               *service.UserService
 	billingCacheService       *service.BillingCacheService
 	usageService              *service.UsageService
@@ -68,7 +67,6 @@ func NewGatewayHandler(
 	openAIGatewayService *service.OpenAIGatewayService,
 	geminiCompatService *service.GeminiMessagesCompatService,
 	antigravityGatewayService *service.AntigravityGatewayService,
-	kiroGatewayService *service.KiroGatewayService,
 	userService *service.UserService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
@@ -106,7 +104,6 @@ func NewGatewayHandler(
 		openAIGatewayService:      openAIGatewayService,
 		geminiCompatService:       geminiCompatService,
 		antigravityGatewayService: antigravityGatewayService,
-		kiroGatewayService:        kiroGatewayService,
 		userService:               userService,
 		billingCacheService:       billingCacheService,
 		usageService:              usageService,
@@ -936,8 +933,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
-			} else if account.Platform == service.PlatformKiro && account.Type != service.AccountTypeAPIKey {
-				result, err = h.kiroGatewayService.Forward(requestCtx, c, account, body, hasBoundSession, currentAPIKey)
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
 			}

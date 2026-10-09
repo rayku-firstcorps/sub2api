@@ -829,7 +829,7 @@ func (s *SchedulerSnapshotService) rebuildByAccount(ctx context.Context, account
 		return nil
 	}
 
-	buckets := s.bucketsForPlatform(schedulerPlatformForAccount(account.Platform), groupIDs, seen)
+	buckets := s.bucketsForPlatform(account.Platform, groupIDs, seen)
 	if account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
 		buckets = append(buckets, s.bucketsForPlatform(PlatformAnthropic, groupIDs, seen)...)
 		buckets = append(buckets, s.bucketsForPlatform(PlatformGemini, groupIDs, seen)...)
@@ -1490,7 +1490,7 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 	}
 
 	if useMixed {
-		platforms := schedulerPlatformsForBucket(bucket.Platform, true)
+		platforms := []string{bucket.Platform, PlatformAntigravity}
 		var accounts []Account
 		var err error
 		if groupID > 0 {
@@ -1513,17 +1513,6 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return filtered, nil
 	}
 
-	if bucket.Platform == PlatformAnthropic {
-		platforms := schedulerPlatformsForBucket(bucket.Platform, false)
-		if groupID > 0 {
-			return s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, groupID, platforms)
-		}
-		if s.isRunModeSimple() {
-			return s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
-		}
-		return s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, platforms)
-	}
-
 	if groupID > 0 {
 		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, groupID, bucket.Platform)
 	}
@@ -1531,24 +1520,6 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
 	}
 	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
-}
-
-func schedulerPlatformsForBucket(platform string, mixed bool) []string {
-	platforms := []string{platform}
-	if platform == PlatformAnthropic {
-		platforms = append(platforms, PlatformKiro)
-	}
-	if mixed {
-		platforms = append(platforms, PlatformAntigravity)
-	}
-	return platforms
-}
-
-func schedulerPlatformForAccount(platform string) string {
-	if platform == PlatformKiro {
-		return PlatformAnthropic
-	}
-	return platform
 }
 
 func (s *SchedulerSnapshotService) loadAccountsForRebuild(

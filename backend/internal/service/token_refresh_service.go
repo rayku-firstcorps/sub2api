@@ -123,7 +123,6 @@ func NewTokenRefreshService(
 	claudeRefresher := NewClaudeTokenRefresher(oauthService)
 	geminiRefresher := NewGeminiTokenRefresher(geminiOAuthService)
 	agRefresher := NewAntigravityTokenRefresher(antigravityOAuthService)
-	kiroRefresher := NewKiroTokenRefresher()
 	var grokOAuthService *GrokOAuthService
 	if len(grokOAuthServices) > 0 {
 		grokOAuthService = grokOAuthServices[0]
@@ -137,7 +136,6 @@ func NewTokenRefreshService(
 		{platform: PlatformOpenAI, refresher: openAIRefresher, executor: openAIRefresher},
 		{platform: PlatformGemini, refresher: geminiRefresher, executor: geminiRefresher},
 		{platform: PlatformAntigravity, refresher: agRefresher, executor: agRefresher},
-		{platform: PlatformKiro, refresher: kiroRefresher, executor: kiroRefresher},
 		{platform: PlatformGrok, refresher: grokRefresher, executor: grokRefresher},
 	}
 

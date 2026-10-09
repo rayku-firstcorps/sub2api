@@ -61,7 +61,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { AccountPlatform, Group, GroupPlatform } from '@/types'
+import type { Group, GroupPlatform } from '@/types'
 import { useAuthStore } from '@/stores'
 
 const { t } = useI18n()
@@ -70,7 +70,7 @@ const authStore = useAuthStore()
 interface Props {
   modelValue: number[]
   groups: (Group & { account_count?: number })[]
-  platform?: AccountPlatform | GroupPlatform // Optional platform filter
+  platform?: GroupPlatform // Optional platform filter
   mixedScheduling?: boolean // For antigravity accounts: allow anthropic/gemini groups
   searchable?: boolean | 'auto'
 }
@@ -89,28 +89,20 @@ const isSearchable = computed(() => {
   return props.searchable
 })
 
-const effectivePlatform = computed(() => props.platform === 'kiro' ? 'anthropic' : props.platform)
-
 // Filter groups by platform if specified
 const filteredGroups = computed(() => {
   let result = authStore.isSimpleMode
     ? props.groups.filter((g) => g.platform !== 'composite')
     : props.groups
-  if (effectivePlatform.value) {
-    // Antigravity mixed scheduling can use antigravity, anthropic, or gemini groups.
-    if (effectivePlatform.value === 'antigravity' && props.mixedScheduling) {
+  if (props.platform) {
+    // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
+    if (props.platform === 'antigravity' && props.mixedScheduling) {
       result = result.filter(
-        (g) =>
-          g.platform === 'antigravity' ||
-          g.platform === 'anthropic' ||
-          g.platform === 'gemini' ||
-          g.platform === 'composite'
+        (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini' || g.platform === 'composite'
       )
     } else {
-      // Composite groups can accept accounts from any concrete platform.
-      result = result.filter(
-        (g) => g.platform === effectivePlatform.value || g.platform === 'composite'
-      )
+      // 默认：只能选择同 platform 的分组；composite 分组可接收任意具体平台账号
+      result = result.filter((g) => g.platform === props.platform || g.platform === 'composite')
     }
   }
   if (isSearchable.value && searchText.value) {

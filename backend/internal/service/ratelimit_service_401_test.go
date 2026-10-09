@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"testing"
 	"time"
 
@@ -18,7 +17,6 @@ type rateLimitAccountRepoStub struct {
 	mockAccountRepoForGemini
 	setErrorCalls          int
 	tempCalls              int
-	rateLimitCalls         int
 	rateLimitedCalls       int
 	updateCredentialsCalls int
 	updateExtraCalls       int
@@ -26,7 +24,6 @@ type rateLimitAccountRepoStub struct {
 	lastExtraUpdates       map[string]any
 	lastErrorMsg           string
 	lastTempReason         string
-	lastRateLimitResetAt   time.Time
 	lastErrorID            int64
 	lastTempID             int64
 	lastRateLimitedID      int64
@@ -49,8 +46,6 @@ func (r *rateLimitAccountRepoStub) SetTempUnschedulable(ctx context.Context, id 
 }
 
 func (r *rateLimitAccountRepoStub) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
-	r.rateLimitCalls++
-	r.lastRateLimitResetAt = resetAt
 	r.rateLimitedCalls++
 	r.lastRateLimitedID = id
 	r.lastRateLimitedAt = resetAt
@@ -299,25 +294,6 @@ func TestRateLimitService_HandleUpstreamError_OAuth401DoesNotOverwriteCredential
 	require.Equal(t, 0, repo.updateExtraCalls, "OpenAI 401 must not set Antigravity force-refresh marker")
 	require.Equal(t, 1, repo.tempCalls, "401 handler should still set temp-unschedulable cooldown")
 	require.Nil(t, repo.lastCredentials, "no credentials should have been persisted")
-}
-
-func TestRateLimitService_HandleUpstreamError_Kiro402SetsMonthlyRateLimit(t *testing.T) {
-	repo := &rateLimitAccountRepoStub{}
-	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
-	account := &Account{
-		ID:       104,
-		Platform: PlatformKiro,
-		Type:     AccountTypeOAuth,
-	}
-	resetAt := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Second)
-	body := []byte(`{"nextDateReset":` + strconv.FormatInt(resetAt.Unix(), 10) + `}`)
-
-	shouldDisable := service.HandleUpstreamError(context.Background(), account, 402, http.Header{}, body)
-
-	require.True(t, shouldDisable)
-	require.Equal(t, 0, repo.setErrorCalls)
-	require.Equal(t, 1, repo.rateLimitCalls)
-	require.WithinDuration(t, resetAt, repo.lastRateLimitResetAt, time.Second)
 }
 
 // 缺少 refresh_token 的 OAuth 账号 401 应直接 SetError 永久禁用，

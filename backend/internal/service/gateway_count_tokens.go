@@ -72,11 +72,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return err
 	}
 
-	userAgent := ""
-	if c != nil && c.Request != nil {
-		userAgent = c.GetHeader("User-Agent")
-	}
-	isClaudeCodeCT := IsClaudeCodeClient(ctx) || isClaudeCodeClient(userAgent, parsed.MetadataUserID)
+	isClaudeCodeCT := IsClaudeCodeClient(ctx) || isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCodeCT
 
 	if shouldMimicClaudeCode {
@@ -111,13 +107,6 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	// 返回 nil 避免 handler 层记录为错误，也不设置 ops 上游错误上下文。
 	if account.Platform == PlatformAntigravity {
 		s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported for this platform")
-		return nil
-	}
-
-	if account.Platform == PlatformKiro {
-		c.JSON(http.StatusOK, gin.H{
-			"input_tokens": estimateKiroInputTokens(body),
-		})
 		return nil
 	}
 

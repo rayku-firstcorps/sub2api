@@ -230,13 +230,12 @@ func ProvideAccountUsageService(
 	grokQuotaFetcher *GrokQuotaFetcher,
 	grokQuotaService *GrokQuotaService,
 	openAIQuotaService *OpenAIQuotaService,
-	kiroTokenProvider *KiroTokenProvider,
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
 	openAIGatewayService *OpenAIGatewayService,
 ) *AccountUsageService {
-	service := NewAccountUsageServiceWithKiro(
+	service := NewAccountUsageService(
 		accountRepo,
 		usageLogRepo,
 		usageFetcher,
@@ -245,7 +244,6 @@ func ProvideAccountUsageService(
 		grokQuotaFetcher,
 		grokQuotaService,
 		openAIQuotaService,
-		kiroTokenProvider,
 		cache,
 		identityCache,
 		tlsFPProfileService,
@@ -260,7 +258,6 @@ func ProvideAccountTestService(
 	claudeTokenProvider *ClaudeTokenProvider,
 	grokTokenProvider *GrokTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
-	kiroTokenProvider *KiroTokenProvider,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -274,7 +271,6 @@ func ProvideAccountTestService(
 		claudeTokenProvider,
 		grokTokenProvider,
 		antigravityGatewayService,
-		kiroTokenProvider,
 		httpUpstream,
 		cfg,
 		tlsFPProfileService,
@@ -365,21 +361,6 @@ func ProvideAntigravityTokenProvider(
 	executor := NewAntigravityTokenRefresher(antigravityOAuthService)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
-	p.SetTempUnschedCache(tempUnschedCache)
-	return p
-}
-
-// ProvideKiroTokenProvider creates KiroTokenProvider with OAuthRefreshAPI injection
-func ProvideKiroTokenProvider(
-	accountRepo AccountRepository,
-	tokenCache GeminiTokenCache,
-	refreshAPI *OAuthRefreshAPI,
-	tempUnschedCache TempUnschedCache,
-) *KiroTokenProvider {
-	p := NewKiroTokenProvider(accountRepo, tokenCache)
-	executor := NewKiroTokenRefresher()
-	p.SetRefreshAPI(refreshAPI, executor)
-	p.SetRefreshPolicy(KiroProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
 	return p
 }
@@ -925,8 +906,6 @@ var ProviderSet = wire.NewSet(
 	ProvideCNProviderBalanceCheckService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
-	ProvideKiroTokenProvider,
-	NewKiroGatewayService,
 	ProvideRateLimitService,
 	ProvideAccountUsageService,
 	ProvideAccountTestService,

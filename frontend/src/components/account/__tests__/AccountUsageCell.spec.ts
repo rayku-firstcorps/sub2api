@@ -15,14 +15,6 @@ vi.mock('@/api/admin', () => ({
   }
 }))
 
-vi.mock('@/utils/format', () => ({
-  formatCompactNumber: (value: number) => {
-    if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
-    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-    return String(value)
-  }
-}))
-
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
@@ -525,49 +517,6 @@ describe('AccountUsageCell', () => {
 
     expect(wrapper.text()).toContain('admin.accounts.aiCreditsBalance')
     expect(wrapper.text()).toContain('25')
-  })
-
-  it('Kiro OAuth renders getUsageLimits usage windows', async () => {
-    getUsage.mockResolvedValue({
-      kiro_breakdown: [
-        {
-          resource_type: 'AGENTIC_REQUEST',
-          display_name: 'Agentic request',
-          unit: 'requests',
-          current_usage: 25.5,
-          usage_limit: 100,
-          utilization: 25.5,
-          resets_at: '2026-05-13T14:00:00Z',
-          remaining_seconds: 7200
-        }
-      ]
-    })
-
-    const wrapper = mount(AccountUsageCell, {
-      props: {
-        account: makeAccount({
-          id: 3001,
-          platform: 'kiro',
-          type: 'oauth',
-          extra: {}
-        })
-      },
-      global: {
-        stubs: {
-          UsageProgressBar: {
-            props: ['label', 'utilization', 'resetsAt', 'color'],
-            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}|{{ color }}</div>'
-          },
-          AccountQuotaInfo: true
-        }
-      }
-    })
-
-    await flushPromises()
-
-    expect(getUsage).toHaveBeenCalledWith(3001)
-    expect(wrapper.text()).toContain('req|25.5|2026-05-13T14:00:00Z|indigo')
-    expect(wrapper.text()).toContain('Agentic request')
   })
 
 

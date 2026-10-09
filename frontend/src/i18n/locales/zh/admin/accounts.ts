@@ -1360,21 +1360,6 @@ export default {
           pleaseEnterRefreshToken: '请输入 Refresh Token',
           pleaseEnterSessionToken: '请输入 Session Token'
         },
-        kiro: {
-          authMethod: '认证方式',
-          builderId: 'Builder ID',
-          clientId: 'Client ID',
-          clientIdPlaceholder: '请输入 Kiro Client ID',
-          clientSecret: 'Client Secret',
-          clientSecretPlaceholder: '请输入 Kiro Client Secret',
-          emptyInput: '请输入 Kiro 凭证',
-          importFailed: 'Kiro 账号导入失败',
-          importPartial: '部分 Kiro 账号导入失败',
-          importSuccess: 'Kiro 账号导入成功',
-          region: '区域',
-          regionPlaceholder: '请输入 AWS 区域',
-          socialAuth: '社交账号认证'
-        },
         grok: {
           title: 'Grok 账号授权',
           followSteps: '请按照以下步骤授权您的 xAI/Grok 账号：',

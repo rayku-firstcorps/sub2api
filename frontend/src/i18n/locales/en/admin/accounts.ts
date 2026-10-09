@@ -1264,21 +1264,6 @@ export default {
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
           pleaseEnterSessionToken: 'Please enter Session Token'
         },
-        kiro: {
-          authMethod: 'Authentication Method',
-          builderId: 'Builder ID',
-          clientId: 'Client ID',
-          clientIdPlaceholder: 'Enter the Kiro client ID',
-          clientSecret: 'Client Secret',
-          clientSecretPlaceholder: 'Enter the Kiro client secret',
-          emptyInput: 'Enter Kiro credentials',
-          importFailed: 'Failed to import Kiro account',
-          importPartial: 'Some Kiro accounts could not be imported',
-          importSuccess: 'Kiro account imported successfully',
-          region: 'Region',
-          regionPlaceholder: 'Enter the AWS region',
-          socialAuth: 'Social Authentication'
-        },
         grok: {
           title: 'Grok Account Authorization',
           followSteps: 'Follow these steps to authorize your xAI/Grok account:',
