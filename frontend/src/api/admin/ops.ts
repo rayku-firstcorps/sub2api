@@ -712,6 +712,7 @@ export interface AlertRule {
   severity: OpsSeverity
   cooldown_minutes: number
   notify_email: boolean
+  notify_feishu?: boolean
   filters?: Record<string, any>
   created_at?: string
   updated_at?: string
@@ -731,7 +732,33 @@ export interface AlertEvent {
   fired_at: string
   resolved_at?: string | null
   email_sent: boolean
+  feishu_deliveries?: OpsFeishuDelivery[]
   created_at: string
+}
+
+export interface OpsFeishuDelivery {
+  id: number
+  event_id: number
+  kind: 'firing' | 'resolved'
+  status: 'pending' | 'sending' | 'sent' | 'failed' | 'cancelled'
+  attempts: number
+  last_error?: string
+  sent_at?: string
+}
+
+export interface FeishuNotificationConfig {
+  enabled: boolean
+  min_severity: '' | 'info' | 'warning' | 'critical'
+  rate_limit_per_hour: number
+  include_resolved_alerts: boolean
+  webhook_configured: boolean
+  secret_configured: boolean
+}
+
+export type FeishuNotificationConfigUpdate = Omit<FeishuNotificationConfig, 'webhook_configured' | 'secret_configured'> & {
+  webhook_url?: string
+  signing_secret?: string
+  clear_credentials?: boolean
 }
 
 export interface EmailNotificationConfig {
@@ -1243,6 +1270,20 @@ export async function createAlertSilence(payload: {
 }
 
 // Email notification config
+export async function getFeishuNotificationConfig(): Promise<FeishuNotificationConfig> {
+  const { data } = await apiClient.get<FeishuNotificationConfig>('/admin/ops/feishu-notification/config')
+  return data
+}
+
+export async function updateFeishuNotificationConfig(config: FeishuNotificationConfigUpdate): Promise<FeishuNotificationConfig> {
+  const { data } = await apiClient.put<FeishuNotificationConfig>('/admin/ops/feishu-notification/config', config)
+  return data
+}
+
+export async function testFeishuNotification(): Promise<void> {
+  await apiClient.post('/admin/ops/feishu-notification/test')
+}
+
 export async function getEmailNotificationConfig(): Promise<EmailNotificationConfig> {
   const { data } = await apiClient.get<EmailNotificationConfig>('/admin/ops/email-notification/config')
   return data
@@ -1317,6 +1358,9 @@ async function updateMetricThresholds(thresholds: OpsMetricThresholds): Promise<
 }
 
 export const opsAPI = {
+  getFeishuNotificationConfig,
+  updateFeishuNotificationConfig,
+  testFeishuNotification,
   getDashboardSnapshotV2,
   getDashboardOverview,
   getThroughputTrend,

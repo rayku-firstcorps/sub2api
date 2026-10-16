@@ -75,8 +75,10 @@ type opsAlertRuleValidatedInput struct {
 	SustainedMinutes int
 	CooldownMinutes  int
 
-	Enabled     bool
-	NotifyEmail bool
+	Enabled        bool
+	NotifyEmail    bool
+	NotifyFeishu   bool
+	FeishuProvided bool
 
 	WindowProvided    bool
 	SustainedProvided bool
@@ -196,6 +198,14 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 		validated.NotifyEmail = true
 	}
 
+	validated.NotifyFeishu = true
+	if v, ok := raw["notify_feishu"]; ok {
+		validated.FeishuProvided = true
+		if strings.TrimSpace(string(v)) == "null" || json.Unmarshal(v, &validated.NotifyFeishu) != nil {
+			return nil, fmt.Errorf("notify_feishu must be a boolean")
+		}
+	}
+
 	if v, ok := raw["window_minutes"]; ok {
 		validated.WindowProvided = true
 		if err := json.Unmarshal(v, &validated.WindowMinutes); err != nil {
@@ -297,6 +307,7 @@ func (h *OpsHandler) CreateAlertRule(c *gin.Context) {
 	rule.Enabled = validated.Enabled
 	rule.NotifyEmail = validated.NotifyEmail
 
+	rule.NotifyFeishu = validated.NotifyFeishu
 	created, err := h.opsService.CreateAlertRule(c.Request.Context(), &rule)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -352,6 +363,8 @@ func (h *OpsHandler) UpdateAlertRule(c *gin.Context) {
 	rule.Enabled = validated.Enabled
 	rule.NotifyEmail = validated.NotifyEmail
 
+	rule.NotifyFeishu = validated.NotifyFeishu
+	rule.PreserveNotifyFeishu = !validated.FeishuProvided
 	updated, err := h.opsService.UpdateAlertRule(c.Request.Context(), &rule)
 	if err != nil {
 		response.ErrorFrom(c, err)

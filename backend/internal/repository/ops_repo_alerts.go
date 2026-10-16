@@ -30,6 +30,7 @@ SELECT
   sustained_minutes,
   cooldown_minutes,
   COALESCE(notify_email, true),
+  notify_feishu,
   filters,
   last_triggered_at,
   created_at,
@@ -61,6 +62,7 @@ ORDER BY id DESC`
 			&rule.SustainedMinutes,
 			&rule.CooldownMinutes,
 			&rule.NotifyEmail,
+			&rule.NotifyFeishu,
 			&filtersRaw,
 			&lastTriggeredAt,
 			&rule.CreatedAt,
@@ -113,10 +115,11 @@ INSERT INTO ops_alert_rules (
   cooldown_minutes,
   notify_email,
   filters,
+  notify_feishu,
   created_at,
   updated_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW()
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW()
 )
 RETURNING
   id,
@@ -131,6 +134,7 @@ RETURNING
   sustained_minutes,
   cooldown_minutes,
   COALESCE(notify_email, true),
+  notify_feishu,
   filters,
   last_triggered_at,
   created_at,
@@ -155,6 +159,7 @@ RETURNING
 		input.CooldownMinutes,
 		input.NotifyEmail,
 		filtersArg,
+		input.NotifyFeishu,
 	).Scan(
 		&out.ID,
 		&out.Name,
@@ -168,6 +173,7 @@ RETURNING
 		&out.SustainedMinutes,
 		&out.CooldownMinutes,
 		&out.NotifyEmail,
+		&out.NotifyFeishu,
 		&filtersRaw,
 		&lastTriggeredAt,
 		&out.CreatedAt,
@@ -220,6 +226,7 @@ SET
   cooldown_minutes = $11,
   notify_email = $12,
   filters = $13,
+  notify_feishu = CASE WHEN $15 THEN notify_feishu ELSE $14 END,
   updated_at = NOW()
 WHERE id = $1
 RETURNING
@@ -235,6 +242,7 @@ RETURNING
   sustained_minutes,
   cooldown_minutes,
   COALESCE(notify_email, true),
+  notify_feishu,
   filters,
   last_triggered_at,
   created_at,
@@ -260,6 +268,8 @@ RETURNING
 		input.CooldownMinutes,
 		input.NotifyEmail,
 		filtersArg,
+		input.NotifyFeishu,
+		input.PreserveNotifyFeishu,
 	).Scan(
 		&out.ID,
 		&out.Name,
@@ -273,6 +283,7 @@ RETURNING
 		&out.SustainedMinutes,
 		&out.CooldownMinutes,
 		&out.NotifyEmail,
+		&out.NotifyFeishu,
 		&filtersRaw,
 		&lastTriggeredAt,
 		&out.CreatedAt,
@@ -529,6 +540,17 @@ LIMIT 1`
 }
 
 func (r *opsRepository) CreateAlertEvent(ctx context.Context, event *service.OpsAlertEvent) (*service.OpsAlertEvent, error) {
+	if r == nil {
+		return nil, fmt.Errorf("nil ops repository")
+	}
+	return r.createAlertEvent(ctx, r.db, event)
+}
+
+type opsAlertQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (r *opsRepository) createAlertEvent(ctx context.Context, db opsAlertQueryer, event *service.OpsAlertEvent) (*service.OpsAlertEvent, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -573,7 +595,7 @@ RETURNING
   email_sent,
   created_at`
 
-	row := r.db.QueryRowContext(
+	row := db.QueryRowContext(
 		ctx,
 		q,
 		opsNullInt64(&event.RuleID),

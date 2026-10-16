@@ -85,7 +85,14 @@ func (s *OpsService) ListAlertEvents(ctx context.Context, filter *OpsAlertEventF
 	if s.opsRepo == nil {
 		return []*OpsAlertEvent{}, nil
 	}
-	return s.opsRepo.ListAlertEvents(ctx, filter)
+	events, err := s.opsRepo.ListAlertEvents(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.attachFeishuDeliveries(ctx, events); err != nil {
+		return nil, err
+	}
+	return events, nil
 }
 
 func (s *OpsService) GetAlertEventByID(ctx context.Context, eventID int64) (*OpsAlertEvent, error) {
@@ -107,6 +114,9 @@ func (s *OpsService) GetAlertEventByID(ctx context.Context, eventID int64) (*Ops
 	}
 	if ev == nil {
 		return nil, infraerrors.NotFound("OPS_ALERT_EVENT_NOT_FOUND", "alert event not found")
+	}
+	if err := s.attachFeishuDeliveries(ctx, []*OpsAlertEvent{ev}); err != nil {
+		return nil, err
 	}
 	return ev, nil
 }

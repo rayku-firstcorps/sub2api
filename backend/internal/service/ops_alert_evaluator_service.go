@@ -41,10 +41,11 @@ type OpsAlertEvaluatorService struct {
 	cfg         *config.Config
 	instanceID  string
 
-	stopCh    chan struct{}
-	startOnce sync.Once
-	stopOnce  sync.Once
-	wg        sync.WaitGroup
+	stopCh       chan struct{}
+	startOnce    sync.Once
+	stopOnce     sync.Once
+	wg           sync.WaitGroup
+	feishuCancel context.CancelFunc
 
 	mu         sync.Mutex
 	ruleStates map[int64]*opsAlertRuleState
@@ -93,6 +94,12 @@ func (s *OpsAlertEvaluatorService) Start() {
 		}
 		s.wg.Add(1)
 		go s.run()
+		if s.opsService != nil && s.opsService.feishu != nil {
+			ctx, cancel := context.WithCancel(context.Background())
+			s.feishuCancel = cancel
+			s.wg.Add(1)
+			go func() { defer s.wg.Done(); s.opsService.feishu.run(ctx) }()
+		}
 	})
 }
 
@@ -101,6 +108,9 @@ func (s *OpsAlertEvaluatorService) Stop() {
 		return
 	}
 	s.stopOnce.Do(func() {
+		if s.feishuCancel != nil {
+			s.feishuCancel()
+		}
 		if s.stopCh != nil {
 			close(s.stopCh)
 		}
@@ -201,6 +211,14 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 	emailsSent := 0
 
 	now := time.Now().UTC()
+	var feishuCfg *opsFeishuStoredConfig
+	if s.opsService != nil && s.opsService.feishu != nil {
+		feishuCfg, err = s.opsService.feishu.loadConfig(ctx)
+		if err != nil {
+			logger.LegacyPrintf("service.ops_feishu", "[OpsFeishu] settings unavailable; email evaluation continues")
+		}
+	}
+	feishuRepo, hasFeishuRepo := s.opsRepo.(OpsFeishuRepository)
 	safeEnd := now.Truncate(time.Minute)
 	if safeEnd.IsZero() {
 		safeEnd = now
@@ -284,7 +302,12 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				CreatedAt:      now,
 			}
 
-			created, err := s.opsRepo.CreateAlertEvent(ctx, firedEvent)
+			var created *OpsAlertEvent
+			if hasFeishuRepo && feishuEligible(feishuCfg, runtimeCfg, rule, firedEvent) {
+				created, err = feishuRepo.CreateAlertEventWithFeishu(ctx, firedEvent, feishuCfg.Version)
+			} else {
+				created, err = s.opsRepo.CreateAlertEvent(ctx, firedEvent)
+			}
 			if err != nil {
 				logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] create event failed (rule=%d): %v", rule.ID, err)
 				continue
@@ -300,9 +323,18 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 		}
 
 		// Not breached: resolve active event if present.
-		if activeEvent != nil {
+		if activeEvent != nil && !breachedNow {
 			resolvedAt := now
-			if err := s.opsRepo.UpdateAlertEventStatus(ctx, activeEvent.ID, OpsAlertStatusResolved, &resolvedAt); err != nil {
+			if hasFeishuRepo {
+				version := ""
+				if feishuEligible(feishuCfg, runtimeCfg, rule, activeEvent) && feishuCfg.IncludeResolvedAlerts {
+					version = feishuCfg.Version
+				}
+				err = feishuRepo.ResolveAlertEventWithFeishu(ctx, activeEvent.ID, resolvedAt, version)
+			} else {
+				err = s.opsRepo.UpdateAlertEventStatus(ctx, activeEvent.ID, OpsAlertStatusResolved, &resolvedAt)
+			}
+			if err != nil {
 				logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] resolve event failed (event=%d): %v", activeEvent.ID, err)
 			} else {
 				eventsResolved++

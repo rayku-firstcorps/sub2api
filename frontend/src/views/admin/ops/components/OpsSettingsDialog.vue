@@ -6,6 +6,7 @@ import { opsAPI } from '@/api/admin/ops'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import OpsFeishuNotificationCard from './OpsFeishuNotificationCard.vue'
 import type { OpsAlertRuntimeSettings, EmailNotificationConfig, AlertSeverity, OpsAdvancedSettings, OpsMetricThresholds } from '../types'
 
 const { t } = useI18n()
@@ -268,7 +269,7 @@ async function saveAllSettings() {
 
       <!-- 预警配置 -->
       <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">
-        <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.ops.settings.alertConfig') }}</h4>
+        <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.ops.feishu.emailTitle') }}</h4>
 
         <div class="space-y-4">
           <div class="flex items-center justify-between">
@@ -313,6 +314,8 @@ async function saveAllSettings() {
           </div>
         </div>
       </div>
+
+      <OpsFeishuNotificationCard />
 
       <!-- 评估报告配置 -->
       <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">

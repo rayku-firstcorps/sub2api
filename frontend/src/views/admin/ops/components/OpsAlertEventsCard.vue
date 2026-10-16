@@ -6,6 +6,7 @@ import { useAppStore } from '@/stores/app'
 import Select from '@/components/common/Select.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
+import OpsFeishuDeliveryStatus from './OpsFeishuDeliveryStatus.vue'
 import { opsAPI, type AlertEventsQuery } from '@/api/admin/ops'
 import type { AlertEvent } from '../types'
 import { formatDateTime } from '../utils/opsFormatters'
@@ -447,6 +448,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                 {{ row.email_sent ? t('admin.ops.alertEvents.table.emailSent') : t('admin.ops.alertEvents.table.emailIgnored') }}
               </span>
             </div>
+            <OpsFeishuDeliveryStatus :deliveries="row.feishu_deliveries" />
             <div class="text-[11px] text-gray-400 dark:text-gray-500">{{ formatDimensionsSummary(row) }}</div>
           </div>
         </div>
@@ -475,7 +477,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                 {{ t('admin.ops.alertEvents.table.dimensions') }}
               </th>
               <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                {{ t('admin.ops.alertEvents.table.email') }}
+                {{ t('admin.ops.feishu.deliveryColumn') }}
               </th>
             </tr>
           </thead>
@@ -539,6 +541,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
                     {{ row.email_sent ? t('admin.ops.alertEvents.table.emailSent') : t('admin.ops.alertEvents.table.emailIgnored') }}
                   </span>
                 </span>
+                <OpsFeishuDeliveryStatus :deliveries="row.feishu_deliveries" />
               </td>
             </tr>
           </tbody>
@@ -589,6 +592,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
               <div v-if="selected.description" class="mt-1 whitespace-pre-wrap text-xs text-gray-600 dark:text-gray-300">
                 {{ selected.description }}
               </div>
+              <OpsFeishuDeliveryStatus :deliveries="selected.feishu_deliveries" show-errors />
             </div>
 
             <div class="flex flex-wrap gap-2">

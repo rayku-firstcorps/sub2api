@@ -752,6 +752,7 @@ func ProvideOpsService(
 	settingService *SettingService,
 	authCacheInvalidationWorker *AuthCacheInvalidationWorker,
 	apiKeyService *APIKeyService,
+	encryptor SecretEncryptor,
 ) *OpsService {
 	svc := NewOpsService(
 		opsRepo,
@@ -774,6 +775,7 @@ func ProvideOpsService(
 	}
 	svc.authCacheInvalidationWorker = authCacheInvalidationWorker
 	svc.apiKeyService = apiKeyService
+	svc.feishu = NewOpsFeishuService(svc, encryptor)
 	svc.StartRuntimeSettingsRefresh(context.Background())
 	return svc
 }
