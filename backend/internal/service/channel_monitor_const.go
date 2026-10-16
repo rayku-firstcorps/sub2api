@@ -100,10 +100,11 @@ const (
 	MonitorDefaultGrokModel = "grok-4.5"
 
 	// MonitorStatusOperational 等监控状态字符串常量（与 ent enum 一致）。
-	MonitorStatusOperational = "operational"
-	MonitorStatusDegraded    = "degraded"
-	MonitorStatusFailed      = "failed"
-	MonitorStatusError       = "error"
+	MonitorStatusOperational   = "operational"
+	MonitorStatusDegraded      = "degraded"
+	MonitorStatusFailed        = "failed"
+	MonitorStatusError         = "error"
+	MonitorStatusQualityFailed = "quality_failed"
 
 	// monitorAvailability7Days / 15 / 30 用于聚合查询窗口。
 	monitorAvailability7Days  = 7

@@ -14626,6 +14626,10 @@ type ChannelMonitorMutation struct {
 	last_checked_at         *time.Time
 	created_by              *int64
 	addcreated_by           *int64
+	reasoning_effort        *string
+	prompt                  *string
+	expected_answer         *string
+	notify_feishu           *bool
 	extra_headers           *map[string]string
 	body_override_mode      *string
 	body_override           *map[string]interface{}
@@ -15488,6 +15492,150 @@ func (m *ChannelMonitorMutation) ResetCreatedBy() {
 	m.addcreated_by = nil
 }
 
+// SetReasoningEffort sets the "reasoning_effort" field.
+func (m *ChannelMonitorMutation) SetReasoningEffort(s string) {
+	m.reasoning_effort = &s
+}
+
+// ReasoningEffort returns the value of the "reasoning_effort" field in the mutation.
+func (m *ChannelMonitorMutation) ReasoningEffort() (r string, exists bool) {
+	v := m.reasoning_effort
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReasoningEffort returns the old "reasoning_effort" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldReasoningEffort(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReasoningEffort is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReasoningEffort requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReasoningEffort: %w", err)
+	}
+	return oldValue.ReasoningEffort, nil
+}
+
+// ResetReasoningEffort resets all changes to the "reasoning_effort" field.
+func (m *ChannelMonitorMutation) ResetReasoningEffort() {
+	m.reasoning_effort = nil
+}
+
+// SetPrompt sets the "prompt" field.
+func (m *ChannelMonitorMutation) SetPrompt(s string) {
+	m.prompt = &s
+}
+
+// Prompt returns the value of the "prompt" field in the mutation.
+func (m *ChannelMonitorMutation) Prompt() (r string, exists bool) {
+	v := m.prompt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrompt returns the old "prompt" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldPrompt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrompt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrompt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrompt: %w", err)
+	}
+	return oldValue.Prompt, nil
+}
+
+// ResetPrompt resets all changes to the "prompt" field.
+func (m *ChannelMonitorMutation) ResetPrompt() {
+	m.prompt = nil
+}
+
+// SetExpectedAnswer sets the "expected_answer" field.
+func (m *ChannelMonitorMutation) SetExpectedAnswer(s string) {
+	m.expected_answer = &s
+}
+
+// ExpectedAnswer returns the value of the "expected_answer" field in the mutation.
+func (m *ChannelMonitorMutation) ExpectedAnswer() (r string, exists bool) {
+	v := m.expected_answer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpectedAnswer returns the old "expected_answer" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldExpectedAnswer(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpectedAnswer is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpectedAnswer requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpectedAnswer: %w", err)
+	}
+	return oldValue.ExpectedAnswer, nil
+}
+
+// ResetExpectedAnswer resets all changes to the "expected_answer" field.
+func (m *ChannelMonitorMutation) ResetExpectedAnswer() {
+	m.expected_answer = nil
+}
+
+// SetNotifyFeishu sets the "notify_feishu" field.
+func (m *ChannelMonitorMutation) SetNotifyFeishu(b bool) {
+	m.notify_feishu = &b
+}
+
+// NotifyFeishu returns the value of the "notify_feishu" field in the mutation.
+func (m *ChannelMonitorMutation) NotifyFeishu() (r bool, exists bool) {
+	v := m.notify_feishu
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotifyFeishu returns the old "notify_feishu" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldNotifyFeishu(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotifyFeishu is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotifyFeishu requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotifyFeishu: %w", err)
+	}
+	return oldValue.NotifyFeishu, nil
+}
+
+// ResetNotifyFeishu resets all changes to the "notify_feishu" field.
+func (m *ChannelMonitorMutation) ResetNotifyFeishu() {
+	m.notify_feishu = nil
+}
+
 // SetTemplateID sets the "template_id" field.
 func (m *ChannelMonitorMutation) SetTemplateID(i int64) {
 	m.request_template = &i
@@ -15840,7 +15988,7 @@ func (m *ChannelMonitorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitor.FieldCreatedAt)
 	}
@@ -15891,6 +16039,18 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	}
 	if m.created_by != nil {
 		fields = append(fields, channelmonitor.FieldCreatedBy)
+	}
+	if m.reasoning_effort != nil {
+		fields = append(fields, channelmonitor.FieldReasoningEffort)
+	}
+	if m.prompt != nil {
+		fields = append(fields, channelmonitor.FieldPrompt)
+	}
+	if m.expected_answer != nil {
+		fields = append(fields, channelmonitor.FieldExpectedAnswer)
+	}
+	if m.notify_feishu != nil {
+		fields = append(fields, channelmonitor.FieldNotifyFeishu)
 	}
 	if m.request_template != nil {
 		fields = append(fields, channelmonitor.FieldTemplateID)
@@ -15946,6 +16106,14 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.LastCheckedAt()
 	case channelmonitor.FieldCreatedBy:
 		return m.CreatedBy()
+	case channelmonitor.FieldReasoningEffort:
+		return m.ReasoningEffort()
+	case channelmonitor.FieldPrompt:
+		return m.Prompt()
+	case channelmonitor.FieldExpectedAnswer:
+		return m.ExpectedAnswer()
+	case channelmonitor.FieldNotifyFeishu:
+		return m.NotifyFeishu()
 	case channelmonitor.FieldTemplateID:
 		return m.TemplateID()
 	case channelmonitor.FieldExtraHeaders:
@@ -15997,6 +16165,14 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldLastCheckedAt(ctx)
 	case channelmonitor.FieldCreatedBy:
 		return m.OldCreatedBy(ctx)
+	case channelmonitor.FieldReasoningEffort:
+		return m.OldReasoningEffort(ctx)
+	case channelmonitor.FieldPrompt:
+		return m.OldPrompt(ctx)
+	case channelmonitor.FieldExpectedAnswer:
+		return m.OldExpectedAnswer(ctx)
+	case channelmonitor.FieldNotifyFeishu:
+		return m.OldNotifyFeishu(ctx)
 	case channelmonitor.FieldTemplateID:
 		return m.OldTemplateID(ctx)
 	case channelmonitor.FieldExtraHeaders:
@@ -16132,6 +16308,34 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedBy(v)
+		return nil
+	case channelmonitor.FieldReasoningEffort:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReasoningEffort(v)
+		return nil
+	case channelmonitor.FieldPrompt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrompt(v)
+		return nil
+	case channelmonitor.FieldExpectedAnswer:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpectedAnswer(v)
+		return nil
+	case channelmonitor.FieldNotifyFeishu:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotifyFeishu(v)
 		return nil
 	case channelmonitor.FieldTemplateID:
 		v, ok := value.(int64)
@@ -16344,6 +16548,18 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 		return nil
 	case channelmonitor.FieldCreatedBy:
 		m.ResetCreatedBy()
+		return nil
+	case channelmonitor.FieldReasoningEffort:
+		m.ResetReasoningEffort()
+		return nil
+	case channelmonitor.FieldPrompt:
+		m.ResetPrompt()
+		return nil
+	case channelmonitor.FieldExpectedAnswer:
+		m.ResetExpectedAnswer()
+		return nil
+	case channelmonitor.FieldNotifyFeishu:
+		m.ResetNotifyFeishu()
 		return nil
 	case channelmonitor.FieldTemplateID:
 		m.ResetTemplateID()

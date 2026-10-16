@@ -27,6 +27,7 @@ import {
   STATUS_OPERATIONAL,
   STATUS_DEGRADED,
   STATUS_FAILED,
+  STATUS_QUALITY_FAILED,
   STATUS_ERROR,
   CHECK_MODE_PROBE,
   CHECK_MODE_QUOTA,
@@ -60,6 +61,7 @@ export function useChannelMonitorFormat() {
       case STATUS_DEGRADED:
         return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
       case STATUS_FAILED:
+      case STATUS_QUALITY_FAILED:
         return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
       case STATUS_ERROR:
       default:

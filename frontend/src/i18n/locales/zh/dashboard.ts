@@ -502,6 +502,7 @@ export default {
   // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
     status: {
+      quality_failed: '疑似降智',
       operational: '正常',
       degraded: '降级',
       failed: '失败',

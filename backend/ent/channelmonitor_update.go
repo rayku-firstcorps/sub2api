@@ -292,6 +292,62 @@ func (_u *ChannelMonitorUpdate) AddCreatedBy(v int64) *ChannelMonitorUpdate {
 	return _u
 }
 
+// SetReasoningEffort sets the "reasoning_effort" field.
+func (_u *ChannelMonitorUpdate) SetReasoningEffort(v string) *ChannelMonitorUpdate {
+	_u.mutation.SetReasoningEffort(v)
+	return _u
+}
+
+// SetNillableReasoningEffort sets the "reasoning_effort" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableReasoningEffort(v *string) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetReasoningEffort(*v)
+	}
+	return _u
+}
+
+// SetPrompt sets the "prompt" field.
+func (_u *ChannelMonitorUpdate) SetPrompt(v string) *ChannelMonitorUpdate {
+	_u.mutation.SetPrompt(v)
+	return _u
+}
+
+// SetNillablePrompt sets the "prompt" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillablePrompt(v *string) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetPrompt(*v)
+	}
+	return _u
+}
+
+// SetExpectedAnswer sets the "expected_answer" field.
+func (_u *ChannelMonitorUpdate) SetExpectedAnswer(v string) *ChannelMonitorUpdate {
+	_u.mutation.SetExpectedAnswer(v)
+	return _u
+}
+
+// SetNillableExpectedAnswer sets the "expected_answer" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableExpectedAnswer(v *string) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetExpectedAnswer(*v)
+	}
+	return _u
+}
+
+// SetNotifyFeishu sets the "notify_feishu" field.
+func (_u *ChannelMonitorUpdate) SetNotifyFeishu(v bool) *ChannelMonitorUpdate {
+	_u.mutation.SetNotifyFeishu(v)
+	return _u
+}
+
+// SetNillableNotifyFeishu sets the "notify_feishu" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableNotifyFeishu(v *bool) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetNotifyFeishu(*v)
+	}
+	return _u
+}
+
 // SetTemplateID sets the "template_id" field.
 func (_u *ChannelMonitorUpdate) SetTemplateID(v int64) *ChannelMonitorUpdate {
 	_u.mutation.SetTemplateID(v)
@@ -534,6 +590,11 @@ func (_u *ChannelMonitorUpdate) check() error {
 			return &ValidationError{Name: "jitter_seconds", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.jitter_seconds": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ReasoningEffort(); ok {
+		if err := channelmonitor.ReasoningEffortValidator(v); err != nil {
+			return &ValidationError{Name: "reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.reasoning_effort": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.BodyOverrideMode(); ok {
 		if err := channelmonitor.BodyOverrideModeValidator(v); err != nil {
 			return &ValidationError{Name: "body_override_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.body_override_mode": %w`, err)}
@@ -627,6 +688,18 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.AddedCreatedBy(); ok {
 		_spec.AddField(channelmonitor.FieldCreatedBy, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.ReasoningEffort(); ok {
+		_spec.SetField(channelmonitor.FieldReasoningEffort, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Prompt(); ok {
+		_spec.SetField(channelmonitor.FieldPrompt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExpectedAnswer(); ok {
+		_spec.SetField(channelmonitor.FieldExpectedAnswer, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.NotifyFeishu(); ok {
+		_spec.SetField(channelmonitor.FieldNotifyFeishu, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ExtraHeaders(); ok {
 		_spec.SetField(channelmonitor.FieldExtraHeaders, field.TypeJSON, value)
@@ -1039,6 +1112,62 @@ func (_u *ChannelMonitorUpdateOne) AddCreatedBy(v int64) *ChannelMonitorUpdateOn
 	return _u
 }
 
+// SetReasoningEffort sets the "reasoning_effort" field.
+func (_u *ChannelMonitorUpdateOne) SetReasoningEffort(v string) *ChannelMonitorUpdateOne {
+	_u.mutation.SetReasoningEffort(v)
+	return _u
+}
+
+// SetNillableReasoningEffort sets the "reasoning_effort" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableReasoningEffort(v *string) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetReasoningEffort(*v)
+	}
+	return _u
+}
+
+// SetPrompt sets the "prompt" field.
+func (_u *ChannelMonitorUpdateOne) SetPrompt(v string) *ChannelMonitorUpdateOne {
+	_u.mutation.SetPrompt(v)
+	return _u
+}
+
+// SetNillablePrompt sets the "prompt" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillablePrompt(v *string) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetPrompt(*v)
+	}
+	return _u
+}
+
+// SetExpectedAnswer sets the "expected_answer" field.
+func (_u *ChannelMonitorUpdateOne) SetExpectedAnswer(v string) *ChannelMonitorUpdateOne {
+	_u.mutation.SetExpectedAnswer(v)
+	return _u
+}
+
+// SetNillableExpectedAnswer sets the "expected_answer" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableExpectedAnswer(v *string) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetExpectedAnswer(*v)
+	}
+	return _u
+}
+
+// SetNotifyFeishu sets the "notify_feishu" field.
+func (_u *ChannelMonitorUpdateOne) SetNotifyFeishu(v bool) *ChannelMonitorUpdateOne {
+	_u.mutation.SetNotifyFeishu(v)
+	return _u
+}
+
+// SetNillableNotifyFeishu sets the "notify_feishu" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableNotifyFeishu(v *bool) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetNotifyFeishu(*v)
+	}
+	return _u
+}
+
 // SetTemplateID sets the "template_id" field.
 func (_u *ChannelMonitorUpdateOne) SetTemplateID(v int64) *ChannelMonitorUpdateOne {
 	_u.mutation.SetTemplateID(v)
@@ -1294,6 +1423,11 @@ func (_u *ChannelMonitorUpdateOne) check() error {
 			return &ValidationError{Name: "jitter_seconds", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.jitter_seconds": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ReasoningEffort(); ok {
+		if err := channelmonitor.ReasoningEffortValidator(v); err != nil {
+			return &ValidationError{Name: "reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.reasoning_effort": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.BodyOverrideMode(); ok {
 		if err := channelmonitor.BodyOverrideModeValidator(v); err != nil {
 			return &ValidationError{Name: "body_override_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.body_override_mode": %w`, err)}
@@ -1404,6 +1538,18 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	}
 	if value, ok := _u.mutation.AddedCreatedBy(); ok {
 		_spec.AddField(channelmonitor.FieldCreatedBy, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.ReasoningEffort(); ok {
+		_spec.SetField(channelmonitor.FieldReasoningEffort, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Prompt(); ok {
+		_spec.SetField(channelmonitor.FieldPrompt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExpectedAnswer(); ok {
+		_spec.SetField(channelmonitor.FieldExpectedAnswer, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.NotifyFeishu(); ok {
+		_spec.SetField(channelmonitor.FieldNotifyFeishu, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ExtraHeaders(); ok {
 		_spec.SetField(channelmonitor.FieldExtraHeaders, field.TypeJSON, value)

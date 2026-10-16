@@ -1053,6 +1053,7 @@ func ProvideChannelMonitorRunner(
 	svc *ChannelMonitorService,
 	settingService *SettingService,
 	quotaFetcher *ChannelMonitorQuotaFetcher,
+	opsService *OpsService,
 ) *ChannelMonitorRunner {
 	r := NewChannelMonitorRunner(svc, settingService)
 	if svc != nil {
@@ -1061,6 +1062,7 @@ func ProvideChannelMonitorRunner(
 		svc.SetRuntimeReader(settingService)
 		svc.SetScheduler(r)
 		svc.SetQuotaFetcher(quotaFetcher)
+		svc.SetQualityNotifier(opsService)
 	}
 	r.Start()
 	return r

@@ -39,6 +39,10 @@ func NewChannelMonitorHandler(monitorService *service.ChannelMonitorService) *Ch
 // --- Request / Response ---
 
 type channelMonitorCreateRequest struct {
+	ReasoningEffort  string            `json:"reasoning_effort" binding:"max=32"`
+	Prompt           string            `json:"prompt" binding:"max=8000"`
+	ExpectedAnswer   string            `json:"expected_answer" binding:"max=2000"`
+	NotifyFeishu     bool              `json:"notify_feishu"`
 	Name             string            `json:"name" binding:"required,max=100"`
 	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini grok antigravity kimi zhipu deepseek minimax opencode_go"`
 	APIMode          string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
@@ -63,6 +67,10 @@ type channelMonitorCreateRequest struct {
 }
 
 type channelMonitorUpdateRequest struct {
+	ReasoningEffort  *string            `json:"reasoning_effort" binding:"omitempty,max=32"`
+	Prompt           *string            `json:"prompt" binding:"omitempty,max=8000"`
+	ExpectedAnswer   *string            `json:"expected_answer" binding:"omitempty,max=2000"`
+	NotifyFeishu     *bool              `json:"notify_feishu"`
 	Name             *string            `json:"name" binding:"omitempty,max=100"`
 	Provider         *string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini grok antigravity kimi zhipu deepseek minimax opencode_go"`
 	APIMode          *string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
@@ -86,6 +94,10 @@ type channelMonitorUpdateRequest struct {
 }
 
 type channelMonitorResponse struct {
+	ReasoningEffort     string                               `json:"reasoning_effort"`
+	Prompt              string                               `json:"prompt"`
+	ExpectedAnswer      string                               `json:"expected_answer"`
+	NotifyFeishu        bool                                 `json:"notify_feishu"`
 	ID                  int64                                `json:"id"`
 	Name                string                               `json:"name"`
 	Provider            string                               `json:"provider"`
@@ -121,13 +133,14 @@ type channelMonitorResponse struct {
 }
 
 type channelMonitorCheckResultResponse struct {
-	Model         string                       `json:"model"`
-	Status        string                       `json:"status"`
-	LatencyMs     *int                         `json:"latency_ms"`
-	PingLatencyMs *int                         `json:"ping_latency_ms"`
-	Message       string                       `json:"message"`
-	CheckedAt     string                       `json:"checked_at"`
-	Quota         *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
+	NotificationError string                       `json:"notification_error,omitempty"`
+	Model             string                       `json:"model"`
+	Status            string                       `json:"status"`
+	LatencyMs         *int                         `json:"latency_ms"`
+	PingLatencyMs     *int                         `json:"ping_latency_ms"`
+	Message           string                       `json:"message"`
+	CheckedAt         string                       `json:"checked_at"`
+	Quota             *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
 }
 
 type channelMonitorHistoryItemResponse struct {
@@ -162,6 +175,10 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 		headers = map[string]string{}
 	}
 	resp := &channelMonitorResponse{
+		ReasoningEffort:     m.ReasoningEffort,
+		Prompt:              m.Prompt,
+		ExpectedAnswer:      m.ExpectedAnswer,
+		NotifyFeishu:        m.NotifyFeishu,
 		ID:                  m.ID,
 		Name:                m.Name,
 		Provider:            m.Provider,
@@ -196,13 +213,14 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 
 func checkResultToResponse(r *service.CheckResult) channelMonitorCheckResultResponse {
 	return channelMonitorCheckResultResponse{
-		Model:         r.Model,
-		Status:        r.Status,
-		LatencyMs:     r.LatencyMs,
-		PingLatencyMs: r.PingLatencyMs,
-		Message:       r.Message,
-		CheckedAt:     r.CheckedAt.UTC().Format(time.RFC3339),
-		Quota:         r.Quota,
+		NotificationError: r.NotificationError,
+		Model:             r.Model,
+		Status:            r.Status,
+		LatencyMs:         r.LatencyMs,
+		PingLatencyMs:     r.PingLatencyMs,
+		Message:           r.Message,
+		CheckedAt:         r.CheckedAt.UTC().Format(time.RFC3339),
+		Quota:             r.Quota,
 	}
 }
 
@@ -336,6 +354,10 @@ func (h *ChannelMonitorHandler) Create(c *gin.Context) {
 	}
 
 	m, err := h.monitorService.Create(c.Request.Context(), service.ChannelMonitorCreateParams{
+		ReasoningEffort:  req.ReasoningEffort,
+		Prompt:           req.Prompt,
+		ExpectedAnswer:   req.ExpectedAnswer,
+		NotifyFeishu:     req.NotifyFeishu,
 		Name:             req.Name,
 		Provider:         req.Provider,
 		APIMode:          req.APIMode,
@@ -432,6 +454,10 @@ func (h *ChannelMonitorHandler) Update(c *gin.Context) {
 	}
 
 	m, err := h.monitorService.Update(c.Request.Context(), id, service.ChannelMonitorUpdateParams{
+		ReasoningEffort:  req.ReasoningEffort,
+		Prompt:           req.Prompt,
+		ExpectedAnswer:   req.ExpectedAnswer,
+		NotifyFeishu:     req.NotifyFeishu,
 		Name:             req.Name,
 		Provider:         req.Provider,
 		APIMode:          req.APIMode,

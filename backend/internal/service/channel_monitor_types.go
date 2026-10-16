@@ -32,6 +32,10 @@ const (
 
 // ChannelMonitor 渠道监控配置（service 层模型，不直接暴露 ent 类型）。
 type ChannelMonitor struct {
+	ReasoningEffort string
+	Prompt          string
+	ExpectedAnswer  string
+	NotifyFeishu    bool
 	ID              int64
 	Name            string
 	Provider        string
@@ -82,6 +86,10 @@ type ChannelMonitorListParams struct {
 
 // ChannelMonitorCreateParams 创建参数。
 type ChannelMonitorCreateParams struct {
+	ReasoningEffort  string
+	Prompt           string
+	ExpectedAnswer   string
+	NotifyFeishu     bool
 	Name             string
 	Provider         string
 	APIMode          string
@@ -106,6 +114,10 @@ type ChannelMonitorCreateParams struct {
 
 // ChannelMonitorUpdateParams 更新参数（指针字段表示"未提供则不更新"）。
 type ChannelMonitorUpdateParams struct {
+	ReasoningEffort *string
+	Prompt          *string
+	ExpectedAnswer  *string
+	NotifyFeishu    *bool
 	Name            *string
 	Provider        *string
 	APIMode         *string
@@ -134,12 +146,15 @@ type ChannelMonitorUpdateParams struct {
 
 // CheckResult 单个模型一次检测的结果。
 type CheckResult struct {
-	Model         string
-	Status        string // operational / degraded / failed / error
-	LatencyMs     *int
-	PingLatencyMs *int
-	Message       string
-	CheckedAt     time.Time
+	// ResponseText is a bounded, redacted snapshot for quality notifications only.
+	ResponseText      string
+	NotificationError string
+	Model             string
+	Status            string // operational / degraded / failed / error / quality_failed
+	LatencyMs         *int
+	PingLatencyMs     *int
+	Message           string
+	CheckedAt         time.Time
 	// Quota 配额模式附带快照（quota 模式唯一数据；quota_probe 挂在主模型行）。
 	Quota *domain.MonitorQuotaSnapshot
 }

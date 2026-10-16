@@ -49,6 +49,14 @@ const (
 	FieldLastCheckedAt = "last_checked_at"
 	// FieldCreatedBy holds the string denoting the created_by field in the database.
 	FieldCreatedBy = "created_by"
+	// FieldReasoningEffort holds the string denoting the reasoning_effort field in the database.
+	FieldReasoningEffort = "reasoning_effort"
+	// FieldPrompt holds the string denoting the prompt field in the database.
+	FieldPrompt = "prompt"
+	// FieldExpectedAnswer holds the string denoting the expected_answer field in the database.
+	FieldExpectedAnswer = "expected_answer"
+	// FieldNotifyFeishu holds the string denoting the notify_feishu field in the database.
+	FieldNotifyFeishu = "notify_feishu"
 	// FieldTemplateID holds the string denoting the template_id field in the database.
 	FieldTemplateID = "template_id"
 	// FieldExtraHeaders holds the string denoting the extra_headers field in the database.
@@ -108,6 +116,10 @@ var Columns = []string{
 	FieldJitterSeconds,
 	FieldLastCheckedAt,
 	FieldCreatedBy,
+	FieldReasoningEffort,
+	FieldPrompt,
+	FieldExpectedAnswer,
+	FieldNotifyFeishu,
 	FieldTemplateID,
 	FieldExtraHeaders,
 	FieldBodyOverrideMode,
@@ -161,6 +173,16 @@ var (
 	DefaultJitterSeconds int
 	// JitterSecondsValidator is a validator for the "jitter_seconds" field. It is called by the builders before save.
 	JitterSecondsValidator func(int) error
+	// DefaultReasoningEffort holds the default value on creation for the "reasoning_effort" field.
+	DefaultReasoningEffort string
+	// ReasoningEffortValidator is a validator for the "reasoning_effort" field. It is called by the builders before save.
+	ReasoningEffortValidator func(string) error
+	// DefaultPrompt holds the default value on creation for the "prompt" field.
+	DefaultPrompt string
+	// DefaultExpectedAnswer holds the default value on creation for the "expected_answer" field.
+	DefaultExpectedAnswer string
+	// DefaultNotifyFeishu holds the default value on creation for the "notify_feishu" field.
+	DefaultNotifyFeishu bool
 	// DefaultExtraHeaders holds the default value on creation for the "extra_headers" field.
 	DefaultExtraHeaders map[string]string
 	// DefaultBodyOverrideMode holds the default value on creation for the "body_override_mode" field.
@@ -286,6 +308,26 @@ func ByLastCheckedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedBy orders the results by the created_by field.
 func ByCreatedBy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedBy, opts...).ToFunc()
+}
+
+// ByReasoningEffort orders the results by the reasoning_effort field.
+func ByReasoningEffort(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReasoningEffort, opts...).ToFunc()
+}
+
+// ByPrompt orders the results by the prompt field.
+func ByPrompt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPrompt, opts...).ToFunc()
+}
+
+// ByExpectedAnswer orders the results by the expected_answer field.
+func ByExpectedAnswer(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpectedAnswer, opts...).ToFunc()
+}
+
+// ByNotifyFeishu orders the results by the notify_feishu field.
+func ByNotifyFeishu(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNotifyFeishu, opts...).ToFunc()
 }
 
 // ByTemplateID orders the results by the template_id field.

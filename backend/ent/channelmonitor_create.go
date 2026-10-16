@@ -199,6 +199,62 @@ func (_c *ChannelMonitorCreate) SetCreatedBy(v int64) *ChannelMonitorCreate {
 	return _c
 }
 
+// SetReasoningEffort sets the "reasoning_effort" field.
+func (_c *ChannelMonitorCreate) SetReasoningEffort(v string) *ChannelMonitorCreate {
+	_c.mutation.SetReasoningEffort(v)
+	return _c
+}
+
+// SetNillableReasoningEffort sets the "reasoning_effort" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableReasoningEffort(v *string) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetReasoningEffort(*v)
+	}
+	return _c
+}
+
+// SetPrompt sets the "prompt" field.
+func (_c *ChannelMonitorCreate) SetPrompt(v string) *ChannelMonitorCreate {
+	_c.mutation.SetPrompt(v)
+	return _c
+}
+
+// SetNillablePrompt sets the "prompt" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillablePrompt(v *string) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetPrompt(*v)
+	}
+	return _c
+}
+
+// SetExpectedAnswer sets the "expected_answer" field.
+func (_c *ChannelMonitorCreate) SetExpectedAnswer(v string) *ChannelMonitorCreate {
+	_c.mutation.SetExpectedAnswer(v)
+	return _c
+}
+
+// SetNillableExpectedAnswer sets the "expected_answer" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableExpectedAnswer(v *string) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetExpectedAnswer(*v)
+	}
+	return _c
+}
+
+// SetNotifyFeishu sets the "notify_feishu" field.
+func (_c *ChannelMonitorCreate) SetNotifyFeishu(v bool) *ChannelMonitorCreate {
+	_c.mutation.SetNotifyFeishu(v)
+	return _c
+}
+
+// SetNillableNotifyFeishu sets the "notify_feishu" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableNotifyFeishu(v *bool) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetNotifyFeishu(*v)
+	}
+	return _c
+}
+
 // SetTemplateID sets the "template_id" field.
 func (_c *ChannelMonitorCreate) SetTemplateID(v int64) *ChannelMonitorCreate {
 	_c.mutation.SetTemplateID(v)
@@ -355,6 +411,22 @@ func (_c *ChannelMonitorCreate) defaults() {
 		v := channelmonitor.DefaultJitterSeconds
 		_c.mutation.SetJitterSeconds(v)
 	}
+	if _, ok := _c.mutation.ReasoningEffort(); !ok {
+		v := channelmonitor.DefaultReasoningEffort
+		_c.mutation.SetReasoningEffort(v)
+	}
+	if _, ok := _c.mutation.Prompt(); !ok {
+		v := channelmonitor.DefaultPrompt
+		_c.mutation.SetPrompt(v)
+	}
+	if _, ok := _c.mutation.ExpectedAnswer(); !ok {
+		v := channelmonitor.DefaultExpectedAnswer
+		_c.mutation.SetExpectedAnswer(v)
+	}
+	if _, ok := _c.mutation.NotifyFeishu(); !ok {
+		v := channelmonitor.DefaultNotifyFeishu
+		_c.mutation.SetNotifyFeishu(v)
+	}
 	if _, ok := _c.mutation.ExtraHeaders(); !ok {
 		v := channelmonitor.DefaultExtraHeaders
 		_c.mutation.SetExtraHeaders(v)
@@ -458,6 +530,23 @@ func (_c *ChannelMonitorCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreatedBy(); !ok {
 		return &ValidationError{Name: "created_by", err: errors.New(`ent: missing required field "ChannelMonitor.created_by"`)}
+	}
+	if _, ok := _c.mutation.ReasoningEffort(); !ok {
+		return &ValidationError{Name: "reasoning_effort", err: errors.New(`ent: missing required field "ChannelMonitor.reasoning_effort"`)}
+	}
+	if v, ok := _c.mutation.ReasoningEffort(); ok {
+		if err := channelmonitor.ReasoningEffortValidator(v); err != nil {
+			return &ValidationError{Name: "reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.reasoning_effort": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Prompt(); !ok {
+		return &ValidationError{Name: "prompt", err: errors.New(`ent: missing required field "ChannelMonitor.prompt"`)}
+	}
+	if _, ok := _c.mutation.ExpectedAnswer(); !ok {
+		return &ValidationError{Name: "expected_answer", err: errors.New(`ent: missing required field "ChannelMonitor.expected_answer"`)}
+	}
+	if _, ok := _c.mutation.NotifyFeishu(); !ok {
+		return &ValidationError{Name: "notify_feishu", err: errors.New(`ent: missing required field "ChannelMonitor.notify_feishu"`)}
 	}
 	if _, ok := _c.mutation.ExtraHeaders(); !ok {
 		return &ValidationError{Name: "extra_headers", err: errors.New(`ent: missing required field "ChannelMonitor.extra_headers"`)}
@@ -564,6 +653,22 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 	if value, ok := _c.mutation.CreatedBy(); ok {
 		_spec.SetField(channelmonitor.FieldCreatedBy, field.TypeInt64, value)
 		_node.CreatedBy = value
+	}
+	if value, ok := _c.mutation.ReasoningEffort(); ok {
+		_spec.SetField(channelmonitor.FieldReasoningEffort, field.TypeString, value)
+		_node.ReasoningEffort = value
+	}
+	if value, ok := _c.mutation.Prompt(); ok {
+		_spec.SetField(channelmonitor.FieldPrompt, field.TypeString, value)
+		_node.Prompt = value
+	}
+	if value, ok := _c.mutation.ExpectedAnswer(); ok {
+		_spec.SetField(channelmonitor.FieldExpectedAnswer, field.TypeString, value)
+		_node.ExpectedAnswer = value
+	}
+	if value, ok := _c.mutation.NotifyFeishu(); ok {
+		_spec.SetField(channelmonitor.FieldNotifyFeishu, field.TypeBool, value)
+		_node.NotifyFeishu = value
 	}
 	if value, ok := _c.mutation.ExtraHeaders(); ok {
 		_spec.SetField(channelmonitor.FieldExtraHeaders, field.TypeJSON, value)
@@ -909,6 +1014,54 @@ func (u *ChannelMonitorUpsert) UpdateCreatedBy() *ChannelMonitorUpsert {
 // AddCreatedBy adds v to the "created_by" field.
 func (u *ChannelMonitorUpsert) AddCreatedBy(v int64) *ChannelMonitorUpsert {
 	u.Add(channelmonitor.FieldCreatedBy, v)
+	return u
+}
+
+// SetReasoningEffort sets the "reasoning_effort" field.
+func (u *ChannelMonitorUpsert) SetReasoningEffort(v string) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldReasoningEffort, v)
+	return u
+}
+
+// UpdateReasoningEffort sets the "reasoning_effort" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateReasoningEffort() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldReasoningEffort)
+	return u
+}
+
+// SetPrompt sets the "prompt" field.
+func (u *ChannelMonitorUpsert) SetPrompt(v string) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldPrompt, v)
+	return u
+}
+
+// UpdatePrompt sets the "prompt" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdatePrompt() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldPrompt)
+	return u
+}
+
+// SetExpectedAnswer sets the "expected_answer" field.
+func (u *ChannelMonitorUpsert) SetExpectedAnswer(v string) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldExpectedAnswer, v)
+	return u
+}
+
+// UpdateExpectedAnswer sets the "expected_answer" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateExpectedAnswer() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldExpectedAnswer)
+	return u
+}
+
+// SetNotifyFeishu sets the "notify_feishu" field.
+func (u *ChannelMonitorUpsert) SetNotifyFeishu(v bool) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldNotifyFeishu, v)
+	return u
+}
+
+// UpdateNotifyFeishu sets the "notify_feishu" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateNotifyFeishu() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldNotifyFeishu)
 	return u
 }
 
@@ -1287,6 +1440,62 @@ func (u *ChannelMonitorUpsertOne) AddCreatedBy(v int64) *ChannelMonitorUpsertOne
 func (u *ChannelMonitorUpsertOne) UpdateCreatedBy() *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateCreatedBy()
+	})
+}
+
+// SetReasoningEffort sets the "reasoning_effort" field.
+func (u *ChannelMonitorUpsertOne) SetReasoningEffort(v string) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetReasoningEffort(v)
+	})
+}
+
+// UpdateReasoningEffort sets the "reasoning_effort" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateReasoningEffort() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateReasoningEffort()
+	})
+}
+
+// SetPrompt sets the "prompt" field.
+func (u *ChannelMonitorUpsertOne) SetPrompt(v string) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetPrompt(v)
+	})
+}
+
+// UpdatePrompt sets the "prompt" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdatePrompt() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdatePrompt()
+	})
+}
+
+// SetExpectedAnswer sets the "expected_answer" field.
+func (u *ChannelMonitorUpsertOne) SetExpectedAnswer(v string) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetExpectedAnswer(v)
+	})
+}
+
+// UpdateExpectedAnswer sets the "expected_answer" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateExpectedAnswer() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateExpectedAnswer()
+	})
+}
+
+// SetNotifyFeishu sets the "notify_feishu" field.
+func (u *ChannelMonitorUpsertOne) SetNotifyFeishu(v bool) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetNotifyFeishu(v)
+	})
+}
+
+// UpdateNotifyFeishu sets the "notify_feishu" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateNotifyFeishu() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateNotifyFeishu()
 	})
 }
 
@@ -1841,6 +2050,62 @@ func (u *ChannelMonitorUpsertBulk) AddCreatedBy(v int64) *ChannelMonitorUpsertBu
 func (u *ChannelMonitorUpsertBulk) UpdateCreatedBy() *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.UpdateCreatedBy()
+	})
+}
+
+// SetReasoningEffort sets the "reasoning_effort" field.
+func (u *ChannelMonitorUpsertBulk) SetReasoningEffort(v string) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetReasoningEffort(v)
+	})
+}
+
+// UpdateReasoningEffort sets the "reasoning_effort" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateReasoningEffort() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateReasoningEffort()
+	})
+}
+
+// SetPrompt sets the "prompt" field.
+func (u *ChannelMonitorUpsertBulk) SetPrompt(v string) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetPrompt(v)
+	})
+}
+
+// UpdatePrompt sets the "prompt" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdatePrompt() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdatePrompt()
+	})
+}
+
+// SetExpectedAnswer sets the "expected_answer" field.
+func (u *ChannelMonitorUpsertBulk) SetExpectedAnswer(v string) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetExpectedAnswer(v)
+	})
+}
+
+// UpdateExpectedAnswer sets the "expected_answer" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateExpectedAnswer() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateExpectedAnswer()
+	})
+}
+
+// SetNotifyFeishu sets the "notify_feishu" field.
+func (u *ChannelMonitorUpsertBulk) SetNotifyFeishu(v bool) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetNotifyFeishu(v)
+	})
+}
+
+// UpdateNotifyFeishu sets the "notify_feishu" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateNotifyFeishu() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateNotifyFeishu()
 	})
 }
 

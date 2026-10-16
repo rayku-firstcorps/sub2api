@@ -9,14 +9,15 @@
       <div
         v-for="r in results"
         :key="r.model"
-        class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+        class="flex flex-col gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-dark-600"
       >
-        <div class="flex flex-col">
+        <div class="flex min-w-0 flex-col break-words">
           <span class="font-medium text-gray-900 dark:text-white">{{ formatMonitorModel(r.model) }}</span>
           <span v-if="r.message" class="text-xs text-gray-500 dark:text-gray-400">{{ r.message }}</span>
+          <span v-if="r.notification_error" role="alert" class="text-xs text-amber-700 dark:text-amber-300">{{ t('admin.channelMonitor.quality.notificationFailed') }}</span>
           <MonitorQuotaView :snapshot="r.quota" class="mt-1" />
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex shrink-0 items-center gap-2">
           <span
             class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px]"
             :class="statusBadgeClass(r.status)"

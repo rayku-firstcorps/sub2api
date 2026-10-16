@@ -81,7 +81,8 @@ type ChannelMonitorService struct {
 	// quotaFetcher 由 wire 通过 SetQuotaFetcher 注入（accountUsage/CN 服务在本服务
 	// 之后构造，构造参数注入会破坏既有依赖顺序）。nil 时 fail-closed：
 	// 配额模式的检测产出「未配置」错误快照，Create/Update 关联账号直接报错。
-	quotaFetcher *ChannelMonitorQuotaFetcher
+	quotaFetcher    *ChannelMonitorQuotaFetcher
+	qualityNotifier ChannelMonitorQualityNotifier
 }
 
 const maxChannelMonitorNameRunes = 100
@@ -182,6 +183,10 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		BodyOverride:     p.BodyOverride,
 		CheckMode:        checkMode,
 		AccountID:        cloneInt64Pointer(p.AccountID),
+		ReasoningEffort:  strings.TrimSpace(p.ReasoningEffort),
+		Prompt:           p.Prompt,
+		ExpectedAnswer:   p.ExpectedAnswer,
+		NotifyFeishu:     p.NotifyFeishu,
 	}
 	if err := s.repo.Create(ctx, m); err != nil {
 		return nil, fmt.Errorf("create channel monitor: %w", err)
@@ -250,6 +255,10 @@ func (s *ChannelMonitorService) Duplicate(
 		CheckMode:            defaultCheckMode(source.CheckMode),
 		AccountID:            cloneInt64Pointer(source.AccountID),
 		DuplicateOperationID: operationID,
+		ReasoningEffort:      source.ReasoningEffort,
+		Prompt:               source.Prompt,
+		ExpectedAnswer:       source.ExpectedAnswer,
+		NotifyFeishu:         source.NotifyFeishu,
 	}
 	if err := s.repo.Create(ctx, duplicate); err != nil {
 		return nil, fmt.Errorf("duplicate channel monitor: %w", err)
@@ -370,6 +379,9 @@ func cloneChannelMonitorJSONMap(source map[string]any) (map[string]any, error) {
 // 按 check_mode 分支：probe 沿用 endpoint+api_key 必填；quota 只需关联账号；
 // quota_probe 两者皆需。
 func validateCreateParams(p ChannelMonitorCreateParams) error {
+	if err := validateMonitorQuality(p.Provider, p.CheckMode, p.BodyOverrideMode, p.ReasoningEffort, p.Prompt, p.ExpectedAnswer, p.NotifyFeishu); err != nil {
+		return err
+	}
 	if err := validateProvider(p.Provider); err != nil {
 		return err
 	}
@@ -630,6 +642,7 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 		results = s.runChecksConcurrent(ctx, m)
 	}
 	s.persistCheckResults(ctx, m, results)
+	s.notifyQualityFailure(ctx, m, results)
 	return results, nil
 }
 
@@ -704,6 +717,9 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 
 	// 所有模型共用同一份 CheckOptions（来自监控的快照字段）。
 	opts := &CheckOptions{
+		ReasoningEffort:  m.ReasoningEffort,
+		Prompt:           m.Prompt,
+		ExpectedAnswer:   m.ExpectedAnswer,
 		APIMode:          m.APIMode,
 		ExtraHeaders:     m.ExtraHeaders,
 		BodyOverrideMode: m.BodyOverrideMode,
@@ -966,6 +982,18 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 
 // applyMonitorAdvancedUpdate 处理自定义请求快照相关字段，从 applyMonitorUpdate 拆出避免过长。
 func applyMonitorAdvancedUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams, providerChanged bool) error {
+	if p.ReasoningEffort != nil {
+		existing.ReasoningEffort = strings.TrimSpace(*p.ReasoningEffort)
+	}
+	if p.Prompt != nil {
+		existing.Prompt = *p.Prompt
+	}
+	if p.ExpectedAnswer != nil {
+		existing.ExpectedAnswer = *p.ExpectedAnswer
+	}
+	if p.NotifyFeishu != nil {
+		existing.NotifyFeishu = *p.NotifyFeishu
+	}
 	if p.ClearTemplate {
 		existing.TemplateID = nil
 	} else if p.TemplateID != nil {
@@ -1004,5 +1032,5 @@ func applyMonitorAdvancedUpdate(existing *ChannelMonitor, p ChannelMonitorUpdate
 		existing.BodyOverride = newBody
 	}
 	existing.APIMode = newAPIMode
-	return nil
+	return validateMonitorQuality(existing.Provider, existing.CheckMode, existing.BodyOverrideMode, existing.ReasoningEffort, existing.Prompt, existing.ExpectedAnswer, existing.NotifyFeishu)
 }

@@ -524,6 +524,20 @@ export default {
 
     // Channel Monitor
     channelMonitor: {
+      quality: {
+        title: '降智检测（可选）',
+        hint: '同时填写 Prompt 和预期答案后，去除首尾空白进行精确匹配，答案不符标记为疑似降智（不代表已证实模型替换）。留空保留默认算术探活。',
+        effort: '推理强度（Effort）',
+        defaultEffort: '上游默认（不发送）',
+        effortHint: '请选用目标模型支持的强度。自定义检测默认输出上限为 4096 tokens，可在高级设置中调整；明确被截断的响应不判定为降智。',
+        prompt: '测试 Prompt',
+        expectedAnswer: '预期答案',
+        notifyFeishu: '答案不符时通知飞书群',
+        notifyHint: '复用运维的飞书 Webhook、签名密钥及每小时限流；须启用运维监控与飞书通知。每轮合并通知，发送失败或限流不影响检测结果，下轮不符时再次尝试。通知含测试题和回答，请勿填写敏感信息。',
+        pairRequired: '请同时填写测试 Prompt 和预期答案；启用飞书通知也需要完整测试配置。',
+        replaceConflict: '降智检测和 Effort 不能与请求体“覆盖”模式同时使用，请改为默认或合并模式。',
+        notificationFailed: '飞书通知未送达，请检查运维飞书配置、发送限额与服务日志。',
+      },
       title: '渠道监控',
       description: '监测各渠道的可用性、延迟和状态',
       searchPlaceholder: '搜索监控名称...',

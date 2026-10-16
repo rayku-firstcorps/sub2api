@@ -41,6 +41,9 @@ func newSSRFSafeHTTPClient(timeout time.Duration) *http.Client {
 // CheckOptions 承载一次检测的自定义入参。
 // 所有字段都是可选（零值即等价于"用默认行为"）。
 type CheckOptions struct {
+	ReasoningEffort string
+	Prompt          string
+	ExpectedAnswer  string
 	// APIMode 仅对 OpenAI provider 生效；空串等同 chat_completions。
 	APIMode string
 	// ExtraHeaders 用户自定义 HTTP 头（merge 到 adapter 默认 headers，用户优先）。
@@ -65,6 +68,14 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 
 	challenge := generateChallenge()
 	mode := bodyOverrideMode(opts)
+	customPrompt := opts != nil && strings.TrimSpace(opts.Prompt) != ""
+	if customPrompt {
+		if err := validateMonitorQuality(provider, MonitorCheckModeProbe, mode, opts.ReasoningEffort, opts.Prompt, opts.ExpectedAnswer, false); err != nil {
+			res.Message = err.Error()
+			return res
+		}
+		challenge.Prompt = opts.Prompt
+	}
 
 	start := time.Now()
 	respText, rawBody, statusCode, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
@@ -84,6 +95,36 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		bodySnippet := truncateForErrorBody(rawBody)
 		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("upstream HTTP %d: %s", statusCode, bodySnippet)))
 		return res
+	}
+
+	if customPrompt {
+		if !gjson.Valid(rawBody) || gjson.Get(rawBody, "error").IsObject() || gjson.Get(rawBody, "status").String() == "failed" {
+			res.Status = MonitorStatusError
+			res.Message = "quality check failed: invalid upstream response or API error"
+			return res
+		}
+		// Exhausting the output budget is not evidence of reduced intelligence.
+		if monitorResponseIncomplete(rawBody) {
+			res.Status = MonitorStatusFailed
+			res.Message = "quality check incomplete: upstream output was truncated or incomplete"
+			return res
+		}
+		// Compare the original answer before sanitizing the stored snapshot.
+		matched := strings.TrimSpace(respText) == strings.TrimSpace(opts.ExpectedAnswer)
+		expected := opts.ExpectedAnswer
+		for _, secret := range append([]string{apiKey}, monitorHeaderValues(opts.ExtraHeaders)...) {
+			if secret != "" {
+				respText = strings.ReplaceAll(respText, secret, "[REDACTED]")
+				expected = strings.ReplaceAll(expected, secret, "[REDACTED]")
+			}
+		}
+		res.ResponseText = monitorQualityText(respText, 2000)
+		if !matched {
+			res.Status = MonitorStatusQualityFailed
+			res.Message = truncateMessage(fmt.Sprintf("quality mismatch: expected %q; got %q", monitorQualityText(expected, 60), monitorQualityText(respText, 60)))
+			return res
+		}
+		return finalizeOperationalOrDegraded(res, latency, latencyMs)
 	}
 
 	// Replace 模式：跳过 challenge 校验（用户 body 是静态的，challenge 没法嵌入）。
@@ -208,7 +249,7 @@ var providerAdapters = map[string]providerAdapter{
 		buildHeaders: func(apiKey string) map[string]string {
 			return map[string]string{"x-goog-api-key": apiKey}
 		},
-		textPath: "candidates.0.content.parts.0.text",
+		extractText: extractGeminiMonitorText,
 	},
 }
 
@@ -335,6 +376,17 @@ func extractAnthropicMonitorText(respBytes []byte) string {
 	return strings.Join(parts, "\n")
 }
 
+func extractGeminiMonitorText(respBytes []byte) string {
+	var text strings.Builder
+	gjson.GetBytes(respBytes, "candidates.0.content.parts").ForEach(func(_, part gjson.Result) bool {
+		if !part.Get("thought").Bool() {
+			text.WriteString(part.Get("text").String())
+		}
+		return true
+	})
+	return text.String()
+}
+
 // extractOpenAIResponsesText 聚合 Responses API 的最终 assistant 文本。
 // Responses 的 output 数组顺序由模型决定：reasoning / tool-call item 可能排在 message 前面，
 // 因此不能假设文本永远在 output.0.content.0.text。
@@ -425,7 +477,9 @@ func buildRequestBody(adapter providerAdapter, provider, apiMode, model, prompt 
 	if err != nil {
 		return nil, fmt.Errorf("marshal default body: %w", err)
 	}
-	if mode != MonitorBodyOverrideModeMerge || opts == nil || len(opts.BodyOverride) == 0 {
+	hasQualityOptions := opts != nil && (strings.TrimSpace(opts.Prompt) != "" || opts.ReasoningEffort != "")
+	hasMerge := mode == MonitorBodyOverrideModeMerge && opts != nil && len(opts.BodyOverride) > 0
+	if !hasQualityOptions && !hasMerge {
 		return defaultBody, nil
 	}
 
@@ -434,11 +488,21 @@ func buildRequestBody(adapter providerAdapter, provider, apiMode, model, prompt 
 		return nil, fmt.Errorf("unmarshal default body for merge: %w", err)
 	}
 	deny := bodyMergeKeyDenyList[bodyMergeDenyKey(provider, apiMode)]
-	for k, v := range opts.BodyOverride {
-		if deny[k] {
-			continue
+	applyMonitorQualityBody(defaultMap, provider, apiMode, opts)
+	if hasMerge {
+		override, err := cloneChannelMonitorJSONMap(opts.BodyOverride)
+		if err != nil {
+			return nil, fmt.Errorf("clone body override: %w", err)
 		}
-		defaultMap[k] = v
+		for k, v := range override {
+			if deny[k] {
+				continue
+			}
+			defaultMap[k] = v
+		}
+	}
+	if opts != nil {
+		applyMonitorEffort(defaultMap, provider, apiMode, opts.ReasoningEffort)
 	}
 	merged, err := json.Marshal(defaultMap)
 	if err != nil {
@@ -670,7 +734,22 @@ func truncateMessage(msg string) string {
 	if cutoff < 0 {
 		cutoff = 0
 	}
-	return msg[:cutoff] + ellipsis
+	return strings.ToValidUTF8(msg[:cutoff], "") + ellipsis
+}
+
+func monitorResponseIncomplete(raw string) bool {
+	return gjson.Get(raw, "choices.0.finish_reason").String() == "length" ||
+		gjson.Get(raw, "stop_reason").String() == "max_tokens" ||
+		gjson.Get(raw, "status").String() == "incomplete" ||
+		gjson.Get(raw, "candidates.0.finishReason").String() == "MAX_TOKENS"
+}
+
+func monitorHeaderValues(headers map[string]string) []string {
+	values := make([]string, 0, len(headers))
+	for _, value := range headers {
+		values = append(values, value)
+	}
+	return values
 }
 
 // truncateForErrorBody 把上游错误响应 body 压到 monitorErrorBodySnippetMaxBytes 以内，

@@ -170,6 +170,33 @@
         <Toggle v-model="form.enabled" />
       </div>
 
+      <fieldset v-if="usesProbePart" class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-700">
+        <legend class="px-1 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.channelMonitor.quality.title') }}</legend>
+        <p id="monitor-quality-hint" class="text-xs text-gray-600 dark:text-gray-300">{{ t('admin.channelMonitor.quality.hint') }}</p>
+        <div>
+          <label for="monitor-effort" class="input-label">{{ t('admin.channelMonitor.quality.effort') }}</label>
+          <select id="monitor-effort" v-model="form.reasoning_effort" class="input">
+            <option value="">{{ t('admin.channelMonitor.quality.defaultEffort') }}</option>
+            <option v-for="effort in effortOptions" :key="effort" :value="effort">{{ effort }}</option>
+          </select>
+          <p class="mt-1 text-xs text-gray-600 dark:text-gray-300">{{ t('admin.channelMonitor.quality.effortHint') }}</p>
+        </div>
+        <div>
+          <label for="monitor-prompt" class="input-label">{{ t('admin.channelMonitor.quality.prompt') }}</label>
+          <textarea id="monitor-prompt" v-model="form.prompt" rows="4" maxlength="8000" class="input resize-y" aria-describedby="monitor-quality-hint monitor-quality-error" :aria-invalid="!!qualityError" />
+        </div>
+        <div>
+          <label for="monitor-expected-answer" class="input-label">{{ t('admin.channelMonitor.quality.expectedAnswer') }}</label>
+          <textarea id="monitor-expected-answer" v-model="form.expected_answer" rows="2" maxlength="2000" class="input resize-y" :required="!!form.prompt.trim()" aria-describedby="monitor-quality-hint monitor-quality-error" :aria-invalid="!!qualityError" />
+        </div>
+        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+          <input id="monitor-notify-feishu" v-model="form.notify_feishu" type="checkbox" class="h-4 w-4" />
+          {{ t('admin.channelMonitor.quality.notifyFeishu') }}
+        </label>
+        <p class="text-xs text-gray-600 dark:text-gray-300">{{ t('admin.channelMonitor.quality.notifyHint') }}</p>
+        <p v-if="qualityError" id="monitor-quality-error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ qualityError }}</p>
+      </fieldset>
+
       <!-- 高级设置区：请求模板 + 自定义 headers/body（仅探活模式有意义） -->
       <details v-if="usesProbePart" class="rounded-lg border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-700 dark:bg-dark-900/30">
         <summary class="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -319,6 +346,10 @@ const myActiveKeys = ref<ApiKey[]>([])
 const userGroupRates = ref<Record<number, number>>({})
 
 interface MonitorForm {
+  reasoning_effort: string
+  prompt: string
+  expected_answer: string
+  notify_feishu: boolean
   name: string
   provider: Provider
   api_mode: APIMode
@@ -340,6 +371,10 @@ interface MonitorForm {
 }
 
 const form = reactive<MonitorForm>({
+  reasoning_effort: '',
+  prompt: '',
+  expected_answer: '',
+  notify_feishu: false,
   name: '',
   provider: PROVIDER_ANTHROPIC,
   api_mode: API_MODE_CHAT_COMPLETIONS,
@@ -362,6 +397,22 @@ const form = reactive<MonitorForm>({
 // quota / quota_probe 需要关联账号；probe / quota_probe 需要探活字段。
 const usesQuotaMode = computed(() => form.check_mode !== CHECK_MODE_PROBE)
 const usesProbePart = computed(() => form.check_mode !== CHECK_MODE_QUOTA)
+const effortOptions = computed(() => {
+  if (form.provider === PROVIDER_ANTHROPIC) return ['low', 'medium', 'high', 'max']
+  if (form.provider === PROVIDER_GEMINI) return ['minimal', 'low', 'medium', 'high']
+  return ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+})
+const qualityError = computed(() => {
+  if (!usesProbePart.value) return ''
+  const hasPrompt = !!form.prompt.trim()
+  if (hasPrompt !== !!form.expected_answer.trim() || (form.notify_feishu && !hasPrompt)) {
+    return t('admin.channelMonitor.quality.pairRequired')
+  }
+  if (form.body_override_mode === 'replace' && (hasPrompt || form.reasoning_effort)) {
+    return t('admin.channelMonitor.quality.replaceConflict')
+  }
+  return ''
+})
 
 // jitter 上限与后端校验一致：interval - jitter 不得低于最小检测间隔 15 秒。
 const maxJitterSeconds = computed<number>(() => Math.max(0, (form.interval_seconds || 0) - 15))
@@ -709,6 +760,7 @@ function selectProvider(provider: Provider) {
 // 同时清空 template_id（模板有 provider 归属，跨平台不通用）。
 watch(() => form.provider, () => {
   if (suppressFormWatchers) return
+  if (!effortOptions.value.includes(form.reasoning_effort)) form.reasoning_effort = ''
   form.api_key = ''
   if (form.provider !== PROVIDER_OPENAI) {
     form.api_mode = API_MODE_CHAT_COMPLETIONS
@@ -725,6 +777,10 @@ watch(() => form.api_mode, () => {
 
 function resetForm() {
   suppressFormWatchers = true
+  form.reasoning_effort = ''
+  form.prompt = ''
+  form.expected_answer = ''
+  form.notify_feishu = false
   form.name = ''
   form.provider = PROVIDER_ANTHROPIC
   form.api_mode = API_MODE_CHAT_COMPLETIONS
@@ -749,6 +805,10 @@ function resetForm() {
 
 function loadFromMonitor(m: ChannelMonitor) {
   suppressFormWatchers = true
+  form.reasoning_effort = m.reasoning_effort || ''
+  form.prompt = m.prompt || ''
+  form.expected_answer = m.expected_answer || ''
+  form.notify_feishu = m.notify_feishu || false
   form.name = m.name
   form.provider = m.provider
   form.api_mode = normalizeAPIMode(m.api_mode)
@@ -817,6 +877,10 @@ function pickMyKey(k: ApiKey) {
 
 function buildPayload(): CreateParams {
   return {
+    reasoning_effort: usesProbePart.value ? form.reasoning_effort : '',
+    prompt: usesProbePart.value ? form.prompt : '',
+    expected_answer: usesProbePart.value ? form.expected_answer : '',
+    notify_feishu: usesProbePart.value && form.notify_feishu,
     name: form.name.trim(),
     provider: form.provider,
     api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
@@ -839,6 +903,10 @@ function buildPayload(): CreateParams {
 
 async function handleSubmit() {
   if (submitting.value) return
+  if (qualityError.value) {
+    appStore.showError(qualityError.value)
+    return
+  }
   if (!form.name.trim()) {
     appStore.showError(t('admin.channelMonitor.nameRequired'))
     return

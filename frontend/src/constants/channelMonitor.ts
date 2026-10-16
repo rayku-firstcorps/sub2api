@@ -67,12 +67,14 @@ export const API_MODES: readonly APIMode[] = [
 export const STATUS_OPERATIONAL: MonitorStatus = 'operational'
 export const STATUS_DEGRADED: MonitorStatus = 'degraded'
 export const STATUS_FAILED: MonitorStatus = 'failed'
+export const STATUS_QUALITY_FAILED: MonitorStatus = 'quality_failed'
 export const STATUS_ERROR: MonitorStatus = 'error'
 
 export const MONITOR_STATUSES: readonly MonitorStatus[] = [
   STATUS_OPERATIONAL,
   STATUS_DEGRADED,
   STATUS_FAILED,
+  STATUS_QUALITY_FAILED,
   STATUS_ERROR,
 ]
 

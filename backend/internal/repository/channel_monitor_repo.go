@@ -52,6 +52,10 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 		SetIntervalSeconds(m.IntervalSeconds).
 		SetJitterSeconds(m.JitterSeconds).
 		SetCreatedBy(m.CreatedBy).
+		SetReasoningEffort(m.ReasoningEffort).
+		SetPrompt(m.Prompt).
+		SetExpectedAnswer(m.ExpectedAnswer).
+		SetNotifyFeishu(m.NotifyFeishu).
 		SetExtraHeaders(channelMonitorHeadersForPersistence(m)).
 		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode)).
 		SetCheckMode(defaultCheckModeRepo(m.CheckMode))
@@ -112,6 +116,10 @@ func (r *channelMonitorRepository) GetByID(ctx context.Context, id int64) (*serv
 func (r *channelMonitorRepository) Update(ctx context.Context, m *service.ChannelMonitor) error {
 	client := clientFromContext(ctx, r.client)
 	updater := client.ChannelMonitor.UpdateOneID(m.ID).
+		SetReasoningEffort(m.ReasoningEffort).
+		SetPrompt(m.Prompt).
+		SetExpectedAnswer(m.ExpectedAnswer).
+		SetNotifyFeishu(m.NotifyFeishu).
 		SetName(m.Name).
 		SetProvider(channelmonitor.Provider(m.Provider)).
 		SetAPIMode(defaultAPIModeRepo(m.APIMode)).
@@ -629,7 +637,7 @@ func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, ta
 		    COUNT(*) FILTER (WHERE status IN ('operational','degraded'))     AS ok_count,
 		    COUNT(*) FILTER (WHERE status = 'operational')                   AS operational_count,
 		    COUNT(*) FILTER (WHERE status = 'degraded')                      AS degraded_count,
-		    COUNT(*) FILTER (WHERE status = 'failed')                        AS failed_count,
+			    COUNT(*) FILTER (WHERE status IN ('failed','quality_failed'))    AS failed_count,
 		    COUNT(*) FILTER (WHERE status = 'error')                         AS error_count,
 		    COALESCE(SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL), 0)             AS sum_latency_ms,
 		    COUNT(latency_ms)                                                AS count_latency,
@@ -770,6 +778,10 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 	duplicateOperationID := headers[service.ChannelMonitorDuplicateOperationIDMetadataKey]
 	delete(headers, service.ChannelMonitorDuplicateOperationIDMetadataKey)
 	out := &service.ChannelMonitor{
+		ReasoningEffort:      row.ReasoningEffort,
+		Prompt:               row.Prompt,
+		ExpectedAnswer:       row.ExpectedAnswer,
+		NotifyFeishu:         row.NotifyFeishu,
 		ID:                   row.ID,
 		Name:                 row.Name,
 		Provider:             string(row.Provider),

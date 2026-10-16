@@ -637,6 +637,10 @@ var (
 		{Name: "jitter_seconds", Type: field.TypeInt, Default: 0},
 		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_by", Type: field.TypeInt64},
+		{Name: "reasoning_effort", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "prompt", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "expected_answer", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "notify_feishu", Type: field.TypeBool, Default: false},
 		{Name: "extra_headers", Type: field.TypeJSON},
 		{Name: "body_override_mode", Type: field.TypeString, Size: 10, Default: "off"},
 		{Name: "body_override", Type: field.TypeJSON, Nullable: true},
@@ -650,7 +654,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
-				Columns:    []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns:    []*schema.Column{ChannelMonitorsColumns[25]},
 				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -679,7 +683,7 @@ var (
 			{
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[25]},
 			},
 			{
 				Name:    "channelmonitor_account_id",
@@ -736,7 +740,7 @@ var (
 	ChannelMonitorHistoriesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
 		{Name: "model", Type: field.TypeString, Size: 200},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"operational", "degraded", "failed", "error"}},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"operational", "degraded", "failed", "error", "quality_failed"}},
 		{Name: "latency_ms", Type: field.TypeInt, Nullable: true},
 		{Name: "ping_latency_ms", Type: field.TypeInt, Nullable: true},
 		{Name: "message", Type: field.TypeString, Nullable: true, Size: 500, Default: ""},

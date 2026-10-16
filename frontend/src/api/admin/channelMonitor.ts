@@ -16,7 +16,7 @@ export type Provider =
   | 'deepseek'
   | 'minimax'
   | 'opencode_go'
-export type MonitorStatus = 'operational' | 'degraded' | 'failed' | 'error'
+export type MonitorStatus = 'operational' | 'degraded' | 'failed' | 'error' | 'quality_failed'
 export type BodyOverrideMode = 'off' | 'merge' | 'replace'
 export type APIMode = 'chat_completions' | 'responses'
 /**
@@ -60,6 +60,11 @@ export interface MonitorQuotaSnapshot {
 }
 
 export interface ChannelMonitor {
+  /** Optional for compatibility with servers predating quality probes. */
+  reasoning_effort?: string
+  prompt?: string
+  expected_answer?: string
+  notify_feishu?: boolean
   id: number
   name: string
   provider: Provider
@@ -127,6 +132,10 @@ export interface ListResponse {
 }
 
 export interface CreateParams {
+  reasoning_effort?: string
+  prompt?: string
+  expected_answer?: string
+  notify_feishu?: boolean
   name: string
   provider: Provider
   api_mode?: APIMode
@@ -159,6 +168,7 @@ export type UpdateParams = Partial<CreateParams> & {
 }
 
 export interface CheckResult {
+  notification_error?: string
   model: string
   status: MonitorStatus
   latency_ms: number | null

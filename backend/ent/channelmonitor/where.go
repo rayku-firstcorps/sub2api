@@ -130,6 +130,26 @@ func CreatedBy(v int64) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldCreatedBy, v))
 }
 
+// ReasoningEffort applies equality check predicate on the "reasoning_effort" field. It's identical to ReasoningEffortEQ.
+func ReasoningEffort(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldReasoningEffort, v))
+}
+
+// Prompt applies equality check predicate on the "prompt" field. It's identical to PromptEQ.
+func Prompt(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldPrompt, v))
+}
+
+// ExpectedAnswer applies equality check predicate on the "expected_answer" field. It's identical to ExpectedAnswerEQ.
+func ExpectedAnswer(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldExpectedAnswer, v))
+}
+
+// NotifyFeishu applies equality check predicate on the "notify_feishu" field. It's identical to NotifyFeishuEQ.
+func NotifyFeishu(v bool) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldNotifyFeishu, v))
+}
+
 // TemplateID applies equality check predicate on the "template_id" field. It's identical to TemplateIDEQ.
 func TemplateID(v int64) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldTemplateID, v))
@@ -933,6 +953,211 @@ func CreatedByLT(v int64) predicate.ChannelMonitor {
 // CreatedByLTE applies the LTE predicate on the "created_by" field.
 func CreatedByLTE(v int64) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldLTE(FieldCreatedBy, v))
+}
+
+// ReasoningEffortEQ applies the EQ predicate on the "reasoning_effort" field.
+func ReasoningEffortEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldReasoningEffort, v))
+}
+
+// ReasoningEffortNEQ applies the NEQ predicate on the "reasoning_effort" field.
+func ReasoningEffortNEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldReasoningEffort, v))
+}
+
+// ReasoningEffortIn applies the In predicate on the "reasoning_effort" field.
+func ReasoningEffortIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIn(FieldReasoningEffort, vs...))
+}
+
+// ReasoningEffortNotIn applies the NotIn predicate on the "reasoning_effort" field.
+func ReasoningEffortNotIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotIn(FieldReasoningEffort, vs...))
+}
+
+// ReasoningEffortGT applies the GT predicate on the "reasoning_effort" field.
+func ReasoningEffortGT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGT(FieldReasoningEffort, v))
+}
+
+// ReasoningEffortGTE applies the GTE predicate on the "reasoning_effort" field.
+func ReasoningEffortGTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGTE(FieldReasoningEffort, v))
+}
+
+// ReasoningEffortLT applies the LT predicate on the "reasoning_effort" field.
+func ReasoningEffortLT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLT(FieldReasoningEffort, v))
+}
+
+// ReasoningEffortLTE applies the LTE predicate on the "reasoning_effort" field.
+func ReasoningEffortLTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLTE(FieldReasoningEffort, v))
+}
+
+// ReasoningEffortContains applies the Contains predicate on the "reasoning_effort" field.
+func ReasoningEffortContains(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContains(FieldReasoningEffort, v))
+}
+
+// ReasoningEffortHasPrefix applies the HasPrefix predicate on the "reasoning_effort" field.
+func ReasoningEffortHasPrefix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasPrefix(FieldReasoningEffort, v))
+}
+
+// ReasoningEffortHasSuffix applies the HasSuffix predicate on the "reasoning_effort" field.
+func ReasoningEffortHasSuffix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasSuffix(FieldReasoningEffort, v))
+}
+
+// ReasoningEffortEqualFold applies the EqualFold predicate on the "reasoning_effort" field.
+func ReasoningEffortEqualFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEqualFold(FieldReasoningEffort, v))
+}
+
+// ReasoningEffortContainsFold applies the ContainsFold predicate on the "reasoning_effort" field.
+func ReasoningEffortContainsFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContainsFold(FieldReasoningEffort, v))
+}
+
+// PromptEQ applies the EQ predicate on the "prompt" field.
+func PromptEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldPrompt, v))
+}
+
+// PromptNEQ applies the NEQ predicate on the "prompt" field.
+func PromptNEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldPrompt, v))
+}
+
+// PromptIn applies the In predicate on the "prompt" field.
+func PromptIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIn(FieldPrompt, vs...))
+}
+
+// PromptNotIn applies the NotIn predicate on the "prompt" field.
+func PromptNotIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotIn(FieldPrompt, vs...))
+}
+
+// PromptGT applies the GT predicate on the "prompt" field.
+func PromptGT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGT(FieldPrompt, v))
+}
+
+// PromptGTE applies the GTE predicate on the "prompt" field.
+func PromptGTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGTE(FieldPrompt, v))
+}
+
+// PromptLT applies the LT predicate on the "prompt" field.
+func PromptLT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLT(FieldPrompt, v))
+}
+
+// PromptLTE applies the LTE predicate on the "prompt" field.
+func PromptLTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLTE(FieldPrompt, v))
+}
+
+// PromptContains applies the Contains predicate on the "prompt" field.
+func PromptContains(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContains(FieldPrompt, v))
+}
+
+// PromptHasPrefix applies the HasPrefix predicate on the "prompt" field.
+func PromptHasPrefix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasPrefix(FieldPrompt, v))
+}
+
+// PromptHasSuffix applies the HasSuffix predicate on the "prompt" field.
+func PromptHasSuffix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasSuffix(FieldPrompt, v))
+}
+
+// PromptEqualFold applies the EqualFold predicate on the "prompt" field.
+func PromptEqualFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEqualFold(FieldPrompt, v))
+}
+
+// PromptContainsFold applies the ContainsFold predicate on the "prompt" field.
+func PromptContainsFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContainsFold(FieldPrompt, v))
+}
+
+// ExpectedAnswerEQ applies the EQ predicate on the "expected_answer" field.
+func ExpectedAnswerEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldExpectedAnswer, v))
+}
+
+// ExpectedAnswerNEQ applies the NEQ predicate on the "expected_answer" field.
+func ExpectedAnswerNEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldExpectedAnswer, v))
+}
+
+// ExpectedAnswerIn applies the In predicate on the "expected_answer" field.
+func ExpectedAnswerIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIn(FieldExpectedAnswer, vs...))
+}
+
+// ExpectedAnswerNotIn applies the NotIn predicate on the "expected_answer" field.
+func ExpectedAnswerNotIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotIn(FieldExpectedAnswer, vs...))
+}
+
+// ExpectedAnswerGT applies the GT predicate on the "expected_answer" field.
+func ExpectedAnswerGT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGT(FieldExpectedAnswer, v))
+}
+
+// ExpectedAnswerGTE applies the GTE predicate on the "expected_answer" field.
+func ExpectedAnswerGTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGTE(FieldExpectedAnswer, v))
+}
+
+// ExpectedAnswerLT applies the LT predicate on the "expected_answer" field.
+func ExpectedAnswerLT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLT(FieldExpectedAnswer, v))
+}
+
+// ExpectedAnswerLTE applies the LTE predicate on the "expected_answer" field.
+func ExpectedAnswerLTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLTE(FieldExpectedAnswer, v))
+}
+
+// ExpectedAnswerContains applies the Contains predicate on the "expected_answer" field.
+func ExpectedAnswerContains(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContains(FieldExpectedAnswer, v))
+}
+
+// ExpectedAnswerHasPrefix applies the HasPrefix predicate on the "expected_answer" field.
+func ExpectedAnswerHasPrefix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasPrefix(FieldExpectedAnswer, v))
+}
+
+// ExpectedAnswerHasSuffix applies the HasSuffix predicate on the "expected_answer" field.
+func ExpectedAnswerHasSuffix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasSuffix(FieldExpectedAnswer, v))
+}
+
+// ExpectedAnswerEqualFold applies the EqualFold predicate on the "expected_answer" field.
+func ExpectedAnswerEqualFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEqualFold(FieldExpectedAnswer, v))
+}
+
+// ExpectedAnswerContainsFold applies the ContainsFold predicate on the "expected_answer" field.
+func ExpectedAnswerContainsFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContainsFold(FieldExpectedAnswer, v))
+}
+
+// NotifyFeishuEQ applies the EQ predicate on the "notify_feishu" field.
+func NotifyFeishuEQ(v bool) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldNotifyFeishu, v))
+}
+
+// NotifyFeishuNEQ applies the NEQ predicate on the "notify_feishu" field.
+func NotifyFeishuNEQ(v bool) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldNotifyFeishu, v))
 }
 
 // TemplateIDEQ applies the EQ predicate on the "template_id" field.

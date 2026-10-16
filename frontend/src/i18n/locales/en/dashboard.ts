@@ -497,6 +497,7 @@ export default {
   // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
     status: {
+      quality_failed: 'Quality mismatch',
       operational: 'Operational',
       degraded: 'Degraded',
       failed: 'Failed',

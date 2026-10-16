@@ -87,6 +87,10 @@ func (ChannelMonitor) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 		field.Int64("created_by"),
+			field.String("reasoning_effort").Default("").MaxLen(32),
+			field.Text("prompt").Default(""),
+			field.Text("expected_answer").Default(""),
+			field.Bool("notify_feishu").Default(false),
 
 		// ---- 自定义请求快照字段（来自模板 / 手动编辑） ----
 
