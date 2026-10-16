@@ -129,25 +129,22 @@ func (s *ChannelMonitorService) SetQualityNotifier(notifier ChannelMonitorQualit
 	s.qualityNotifier = notifier
 }
 
-func (s *ChannelMonitorService) notifyQualityFailure(ctx context.Context, m *ChannelMonitor, results []*CheckResult) {
-	if !m.NotifyFeishu || s.qualityNotifier == nil {
-		return
-	}
-	var failures []*CheckResult
-	for _, result := range results {
-		if result.Status == MonitorStatusQualityFailed {
-			failures = append(failures, result)
-		}
-	}
-	if len(failures) == 0 {
+func (s *ChannelMonitorService) notifyQualityCompleted(ctx context.Context, m *ChannelMonitor, results []*CheckResult) {
+	if !m.NotifyFeishu || strings.TrimSpace(m.Prompt) == "" || strings.TrimSpace(m.ExpectedAnswer) == "" || len(results) == 0 {
 		return
 	}
 	// Probe timeout must not cancel the separately bounded notification attempt.
 	notifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
-	if err := s.qualityNotifier.NotifyChannelMonitorQuality(notifyCtx, m, failures); err != nil {
+	var err error
+	if s.qualityNotifier == nil {
+		err = fmt.Errorf("Feishu service unavailable")
+	} else {
+		err = s.qualityNotifier.NotifyChannelMonitorQuality(notifyCtx, m, results)
+	}
+	if err != nil {
 		slog.Warn("channel_monitor: quality notification failed", "monitor_id", m.ID, "error", err)
-		for _, result := range failures {
+		for _, result := range results {
 			result.NotificationError = "Feishu quality notification was not delivered"
 		}
 	}
@@ -155,7 +152,7 @@ func (s *ChannelMonitorService) notifyQualityFailure(ctx context.Context, m *Cha
 
 // Reuses operations credentials, mandatory signing, SSRF-safe transport and the
 // shared rate budget. Quality probes are opt-in and do not create alert rules.
-func (s *OpsService) NotifyChannelMonitorQuality(ctx context.Context, m *ChannelMonitor, failures []*CheckResult) error {
+func (s *OpsService) NotifyChannelMonitorQuality(ctx context.Context, m *ChannelMonitor, results []*CheckResult) error {
 	if s == nil || s.feishu == nil || s.feishu.repo == nil {
 		return fmt.Errorf("Feishu service unavailable")
 	}
@@ -176,10 +173,10 @@ func (s *OpsService) NotifyChannelMonitorQuality(ctx context.Context, m *Channel
 	if err != nil || !allowed {
 		return fmt.Errorf("Feishu send limit unavailable or reached")
 	}
-	return s.feishu.send(ctx, cfg, buildMonitorQualityMessage(m, failures))
+	return s.feishu.send(ctx, cfg, buildMonitorQualityMessage(m, results))
 }
 
-func buildMonitorQualityMessage(m *ChannelMonitor, failures []*CheckResult) string {
+func buildMonitorQualityMessage(m *ChannelMonitor, results []*CheckResult) string {
 	clean := func(value string, limit int) string {
 		if m.APIKey != "" {
 			value = strings.ReplaceAll(value, m.APIKey, "[REDACTED]")
@@ -191,14 +188,36 @@ func buildMonitorQualityMessage(m *ChannelMonitor, failures []*CheckResult) stri
 		}
 		return monitorQualityText(value, limit)
 	}
-	message := fmt.Sprintf("[Sub2API] 渠道疑似降智（答案不符）\n渠道: %s (#%d)\nProvider: %s\nEffort: %s\nPrompt: %s\n预期答案: %s",
-		clean(m.Name, 100), m.ID, m.Provider, m.ReasoningEffort, clean(m.Prompt, 400), clean(m.ExpectedAnswer, 200))
-	for i, result := range failures {
+	passed, mismatched := 0, 0
+	for _, result := range results {
+		switch result.Status {
+		case MonitorStatusOperational, MonitorStatusDegraded:
+			passed++
+		case MonitorStatusQualityFailed:
+			mismatched++
+		}
+	}
+	message := fmt.Sprintf("[Sub2API] 渠道降智检测完成\n渠道: %s (#%d)\n结果汇总: 共 %d 个模型，通过 %d，答案不符 %d，未完成 %d\nProvider: %s\nEffort: %s\nPrompt: %s\n预期答案: %s",
+		clean(m.Name, 100), m.ID, len(results), passed, mismatched, len(results)-passed-mismatched,
+		clean(m.Provider, 50), clean(m.ReasoningEffort, 30), clean(m.Prompt, 400), clean(m.ExpectedAnswer, 200))
+	for i, result := range results {
 		if i >= 5 {
-			message += fmt.Sprintf("\n另有 %d 个模型答案不符，请查看监控历史。", len(failures)-i)
+			message += fmt.Sprintf("\n另有 %d 个模型检测结果，请查看监控历史。", len(results)-i)
 			break
 		}
-		message += fmt.Sprintf("\n模型: %s\n实际回答: %s\n检测时间: %s", clean(result.Model, 100), clean(result.ResponseText, 300), result.CheckedAt.UTC().Format(time.RFC3339))
+		status := "检测未完成（无法判断是否降智）"
+		switch result.Status {
+		case MonitorStatusOperational:
+			status = "通过（答案符合预期）"
+		case MonitorStatusDegraded:
+			status = "通过（答案符合预期，响应较慢）"
+		case MonitorStatusQualityFailed:
+			status = "疑似降智（答案不符）"
+		}
+		message += fmt.Sprintf("\n模型: %s\n检测结果: %s\n实际回答: %s\n检测时间: %s", clean(result.Model, 100), status, clean(result.ResponseText, 300), result.CheckedAt.UTC().Format(time.RFC3339))
+		if result.Message != "" {
+			message += fmt.Sprintf("\n详情: %s", clean(result.Message, 200))
+		}
 	}
 	return message
 }

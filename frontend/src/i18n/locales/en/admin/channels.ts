@@ -526,14 +526,14 @@ export default {
     channelMonitor: {
       quality: {
         title: 'Quality check (optional)',
-        hint: 'Provide both a prompt and an expected answer. Answers are matched exactly after trimming surrounding whitespace. A mismatch indicates suspected quality loss, not proof of model substitution. Leave both blank to keep the arithmetic probe.',
+        hint: 'Provide both a prompt and an expected answer. Matching ignores surrounding whitespace and outer bold or inline-code formatting. Numeric answers also accept explicit conclusions such as "Answer: 21" with an explanation; merely mentioning the number does not count. For best results, ask for only the final answer. A mismatch indicates suspected quality loss, not proof of model substitution. Leave both blank to keep the arithmetic probe.',
         effort: 'Reasoning effort',
         defaultEffort: 'Upstream default (omit)',
         effortHint: 'Select an effort supported by the target model. Custom checks default to 4096 output tokens; adjust via advanced settings. Explicitly truncated responses are not classified as quality loss.',
         prompt: 'Test prompt',
         expectedAnswer: 'Expected answer',
-        notifyFeishu: 'Notify Feishu on answer mismatch',
-        notifyHint: 'Uses the operations Feishu webhook, signing secret and hourly send limit. Enable operations monitoring and Feishu notifications first. One summary per check; send failures or rate limits do not affect probe results, and the next mismatch tries again. Messages contain the test and answer; avoid sensitive content.',
+        notifyFeishu: 'Notify Feishu when quality checks complete',
+        notifyHint: 'Uses the operations Feishu webhook, signing secret and hourly send limit. Enable operations monitoring and Feishu notifications first. Every completed check sends a summary, including passed, mismatched and incomplete results. Send failures or rate limits do not affect probe results; the next completed check tries again. Messages contain the test and answer; avoid sensitive content.',
         pairRequired: 'Provide both a test prompt and an expected answer, including when enabling Feishu notifications.',
         replaceConflict: 'Custom prompts and effort cannot use replace body mode. Select default or merge mode.',
         notificationFailed: 'Feishu notification was not delivered. Check operations settings, send limits and service logs.',

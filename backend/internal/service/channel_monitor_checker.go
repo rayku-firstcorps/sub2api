@@ -110,7 +110,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 			return res
 		}
 		// Compare the original answer before sanitizing the stored snapshot.
-		matched := strings.TrimSpace(respText) == strings.TrimSpace(opts.ExpectedAnswer)
+		matched := matchMonitorQualityAnswer(respText, opts.ExpectedAnswer)
 		expected := opts.ExpectedAnswer
 		for _, secret := range append([]string{apiKey}, monitorHeaderValues(opts.ExtraHeaders)...) {
 			if secret != "" {

@@ -642,7 +642,7 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 		results = s.runChecksConcurrent(ctx, m)
 	}
 	s.persistCheckResults(ctx, m, results)
-	s.notifyQualityFailure(ctx, m, results)
+	s.notifyQualityCompleted(ctx, m, results)
 	return results, nil
 }
 
