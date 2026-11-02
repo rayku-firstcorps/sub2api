@@ -486,6 +486,11 @@ gateway:
     # Setting true enables POST /admin/grok/oauth/password (password → SSO → Build OAuth).
     # Prefer SSO cookie, browser OAuth, or refresh_token re-auth in production.
     password_auth_enabled: false
+    # When true, video status responses keep the official signed https://vidgen.x.ai
+    # video.url instead of rewriting it to the API-key-protected /v1/videos/{id}/content
+    # path. Needed by clients that download video.url without credentials.
+    # Downloads then go straight to xAI and bypass this gateway's account proxy.
+    video_url_passthrough: false
     free_quota_soft_gate_enabled: true
     free_quota_token_limit: 500000
     free_quota_soft_gate_percent: 95

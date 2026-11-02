@@ -756,7 +756,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 			}
 		}
 	}
-	if endpoint == GrokMediaEndpointVideoStatus {
+	if endpoint == GrokMediaEndpointVideoStatus && !s.grokVideoURLPassthrough(respBody, requestID) {
 		respBody = rewriteGrokMediaVideoContentURLs(
 			respBody,
 			requestID,
@@ -927,6 +927,19 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		result.VideoDurationSeconds = billed.VideoDurationSeconds
 	}
 	return result, nil
+}
+
+// grokVideoURLPassthrough reports whether the status body should keep the
+// official signed vidgen.x.ai video.url instead of the authenticated proxy path.
+// It requires gateway.grok.video_url_passthrough and a URL that passes the same
+// https/vidgen.x.ai validation used for content downloads, so any other URL
+// shape is still rewritten.
+func (s *OpenAIGatewayService) grokVideoURLPassthrough(body []byte, requestID string) bool {
+	if s == nil || s.cfg == nil || !s.cfg.Gateway.Grok.VideoURLPassthrough {
+		return false
+	}
+	signedURL, err := grokMediaSignedVideoContentURL(body, requestID)
+	return err == nil && signedURL != ""
 }
 
 func grokMediaSignedVideoContentURL(body []byte, requestID string) (string, error) {

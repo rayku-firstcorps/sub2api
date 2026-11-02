@@ -1158,6 +1158,12 @@ type GatewayGrokConfig struct {
 	// It defaults to false and must be explicitly enabled by the operator.
 	// When true, POST /admin/grok/oauth/password is functional (not ignored).
 	PasswordAuthEnabled bool `mapstructure:"password_auth_enabled"`
+	// VideoURLPassthrough keeps the official signed https://vidgen.x.ai video.url
+	// in video status responses instead of rewriting it to the authenticated
+	// /v1/videos/{id}/content proxy path. Enable it for clients that download
+	// video.url without credentials (e.g. a new-api xAI task plugin). Defaults to
+	// false; downloads then bypass this gateway's account proxy egress.
+	VideoURLPassthrough bool `mapstructure:"video_url_passthrough"`
 	// FreeQuotaSoftGateEnabled enables a local rolling-window scheduling guard
 	// for explicitly free Grok OAuth accounts only.
 	FreeQuotaSoftGateEnabled bool `mapstructure:"free_quota_soft_gate_enabled"`
@@ -2539,6 +2545,7 @@ func setDefaults() {
 	// Enabled by default because free detection requires an explicit free tier marker.
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_enabled", true)
 	viper.SetDefault("gateway.grok.password_auth_enabled", false)
+	viper.SetDefault("gateway.grok.video_url_passthrough", false)
 	// Free soft-gate nominal limit: 500k tokens / rolling 24h (operator policy).
 	viper.SetDefault("gateway.grok.free_quota_token_limit", int64(500_000))
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_percent", 95)

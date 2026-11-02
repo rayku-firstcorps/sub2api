@@ -342,3 +342,50 @@ func TestRewriteGrokMediaVideoContentURLsRewritesSignedVideoURL(t *testing.T) {
 	require.Equal(t, "8", gjson.GetBytes(rewritten, "video.duration").String())
 	require.Equal(t, "done", gjson.GetBytes(rewritten, "status").String())
 }
+
+func forwardGrokVideoStatusForPassthroughTest(t *testing.T, passthrough bool, statusBody string) string {
+	t.Helper()
+	upstream := &grokMediaContentUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(statusBody)),
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Grok.VideoURLPassthrough = passthrough
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
+	c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1", nil)
+
+	_, err := svc.ForwardGrokMedia(
+		context.Background(), c, grokMediaContentTestAccount(),
+		GrokMediaEndpointVideoStatus, "task-1", nil, "",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	return recorder.Body.String()
+}
+
+func TestForwardGrokVideoStatusPassthroughKeepsSignedURL(t *testing.T) {
+	signed := "https://vidgen.x.ai/signed-token/task-1.mp4"
+	body := forwardGrokVideoStatusForPassthroughTest(t, true,
+		`{"status":"done","video":{"url":"`+signed+`","duration":8}}`)
+
+	require.Equal(t, signed, gjson.Get(body, "video.url").String())
+	require.Equal(t, "8", gjson.Get(body, "video.duration").String())
+}
+
+func TestForwardGrokVideoStatusPassthroughDisabledRewritesSignedURL(t *testing.T) {
+	body := forwardGrokVideoStatusForPassthroughTest(t, false,
+		`{"status":"done","video":{"url":"https://vidgen.x.ai/signed-token/task-1.mp4","duration":8}}`)
+
+	require.Equal(t, "/v1/videos/task-1/content", gjson.Get(body, "video.url").String())
+}
+
+func TestForwardGrokVideoStatusPassthroughStillRewritesUnsupportedURL(t *testing.T) {
+	body := forwardGrokVideoStatusForPassthroughTest(t, true,
+		`{"status":"done","video":{"url":"https://vidgen.x.ai.attacker.invalid/task-1.mp4"}}`)
+
+	require.Equal(t, "/v1/videos/task-1/content", gjson.Get(body, "video.url").String())
+}
