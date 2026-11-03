@@ -201,7 +201,12 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 				}
 			}
 
+			captureUpstreamRequest(p, "smart_retry", attempt, retryReq)
+			captureStart := time.Now()
 			retryResp, retryErr := p.httpUpstream.Do(retryReq, p.proxyURL, p.account.ID, p.account.Concurrency)
+			if retryErr != nil || retryResp == nil || (retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable) {
+				captureUpstreamResult(p, "smart_retry", attempt, retryResp, retryErr, nil, captureStart)
+			}
 			if retryErr == nil && retryResp != nil && retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable {
 				log.Printf("%s status=%d smart_retry_success attempt=%d/%d", p.prefix, retryResp.StatusCode, attempt, maxAttempts)
 				// 重试成功，清除 MODEL_CAPACITY_EXHAUSTED cooldown
@@ -227,6 +232,7 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 			if retryResp != nil {
 				lastRetryBody, _ = io.ReadAll(io.LimitReader(retryResp.Body, 8<<10))
 				_ = retryResp.Body.Close()
+				captureUpstreamResult(p, "smart_retry", attempt, retryResp, nil, lastRetryBody, captureStart)
 			}
 
 			// 解析新的重试信息，用于下次重试的等待时间（MODEL_CAPACITY_EXHAUSTED 使用固定循环，跳过）
@@ -376,7 +382,12 @@ func (s *AntigravityGatewayService) handleSingleAccountRetryInPlace(
 			break
 		}
 
+		captureUpstreamRequest(p, "single_account_retry", attempt, retryReq)
+		captureStart := time.Now()
 		retryResp, retryErr := p.httpUpstream.Do(retryReq, p.proxyURL, p.account.ID, p.account.Concurrency)
+		if retryErr != nil || retryResp == nil || (retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable) {
+			captureUpstreamResult(p, "single_account_retry", attempt, retryResp, retryErr, nil, captureStart)
+		}
 		if retryErr == nil && retryResp != nil && retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=%d single_account_503_retry_success attempt=%d/%d total_waited=%v",
 				p.prefix, retryResp.StatusCode, attempt, antigravitySingleAccountSmartRetryMaxAttempts, totalWaited)
@@ -401,6 +412,7 @@ func (s *AntigravityGatewayService) handleSingleAccountRetryInPlace(
 		lastRetryResp = retryResp
 		lastRetryBody, _ = io.ReadAll(io.LimitReader(retryResp.Body, 8<<10))
 		_ = retryResp.Body.Close()
+		captureUpstreamResult(p, "single_account_retry", attempt, retryResp, nil, lastRetryBody, captureStart)
 
 		// 解析新的重试信息，更新下次等待时间
 		if attempt < antigravitySingleAccountSmartRetryMaxAttempts && lastRetryBody != nil {
@@ -514,9 +526,14 @@ urlFallbackLoop:
 				return nil, err
 			}
 
+			captureUpstreamRequest(p, "primary", attempt, upstreamReq)
+			captureStart := time.Now()
 			resp, err = p.httpUpstream.Do(upstreamReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 			if err == nil && resp == nil {
 				err = errors.New("upstream returned nil response")
+			}
+			if err != nil || resp.StatusCode < 400 {
+				captureUpstreamResult(p, "primary", attempt, resp, err, nil, captureStart)
 			}
 			if err != nil {
 				safeErr := sanitizeUpstreamErrorMessage(err.Error())
@@ -552,6 +569,7 @@ urlFallbackLoop:
 			if resp.StatusCode >= 400 {
 				respBody := s.readUpstreamErrorBody(resp)
 				_ = resp.Body.Close()
+				captureUpstreamResult(p, "primary", attempt, resp, nil, respBody, captureStart)
 
 				if overagesInjected && shouldMarkCreditsExhausted(resp, respBody, nil) {
 					modelKey := resolveCreditsOveragesModelKey(p.ctx, p.account, "", p.requestedModel)
