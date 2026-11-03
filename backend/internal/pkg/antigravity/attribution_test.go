@@ -181,3 +181,93 @@ func TestTransformClaudeToGemini_IdentitySystemBlock(t *testing.T) {
 	}
 	require.Equal(t, userText, got.Request.Contents[0].Parts[0].Text)
 }
+
+// Hermes Agent opens its system prompt with a vendor identity sentence that makes
+// the Google upstream answer 429 RESOURCE_EXHAUSTED for every account. It has to be
+// rewritten like the Claude openers, while anything that merely mentions Hermes
+// (or does not start the block with it) must stay untouched.
+func TestNeutralizeHermesIdentity(t *testing.T) {
+	const real = "You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct."
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{
+			name: "real hermes opener keeps the rest of the prompt",
+			text: real,
+			want: "You are an AI agent. You are helpful, knowledgeable, and direct.",
+		},
+		{
+			name: "reworded tail is still covered",
+			text: "You are Hermes Agent, a general purpose assistant. Be brief.",
+			want: "You are an AI agent. Be brief.",
+		},
+		{
+			name: "case-insensitive with leading whitespace",
+			text: "\n  you are hermes agent, built for ops.\nRules follow.",
+			want: "You are an AI agent.\nRules follow.",
+		},
+		{
+			name: "opener without trailing period",
+			text: "You are Hermes Agent",
+			want: "You are an AI agent.",
+		},
+		// Content that only mentions Hermes is user content, not an identity declaration.
+		{
+			name: "mention inside instructions",
+			text: "Use the hermes-agent skill when asked. Hermes Agent docs live in /docs.",
+			want: "Use the hermes-agent skill when asked. Hermes Agent docs live in /docs.",
+		},
+		{
+			name: "opener not at start of block",
+			text: "Example: You are Hermes Agent, an intelligent AI assistant created by Nous Research.",
+			want: "Example: You are Hermes Agent, an intelligent AI assistant created by Nous Research.",
+		},
+		{
+			name: "similar but different name is not touched",
+			text: "You are Hermes, the messenger. Deliver the letter.",
+			want: "You are Hermes, the messenger. Deliver the letter.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, neutralizeClaudeIdentity(tt.text))
+		})
+	}
+}
+
+// End-to-end through the transformer with the same shape as real hermes traffic:
+// one system block that starts with the identity sentence and carries the rest of
+// the prompt. The rewritten opener must be the only difference, so the prompt that
+// follows (and the later "Hermes" mentions inside it) survive untouched.
+func TestTransformClaudeToGemini_HermesIdentitySystemBlock(t *testing.T) {
+	const (
+		opener = "You are Hermes Agent, an intelligent AI assistant created by Nous Research."
+		rest   = " You are helpful, knowledgeable, and direct.\n\nSkills: hermes-agent, chinese-intel-writing-rules."
+		user   = "reply with the single word: pong"
+	)
+	systemJSON, err := json.Marshal([]SystemBlock{{Type: "text", Text: opener + rest}})
+	require.NoError(t, err)
+	userJSON, err := json.Marshal(user)
+	require.NoError(t, err)
+	input := &ClaudeRequest{
+		Model:    "claude-sonnet-5-5",
+		System:   systemJSON,
+		Messages: []ClaudeMessage{{Role: "user", Content: userJSON}},
+	}
+	body, err := TransformClaudeToGeminiWithOptions(input, "test-project", input.Model, TransformOptions{})
+	require.NoError(t, err)
+	var got V1InternalRequest
+	require.NoError(t, json.Unmarshal(body, &got))
+
+	var texts []string
+	for _, part := range got.Request.SystemInstruction.Parts {
+		if part.Text != "\n--- [SYSTEM_PROMPT_END] ---" {
+			texts = append(texts, part.Text)
+		}
+	}
+	require.Equal(t, []string{"You are an AI agent." + rest}, texts)
+	require.NotContains(t, strings.Join(texts, "\n"), "Nous Research")
+	require.Equal(t, user, got.Request.Contents[0].Parts[0].Text)
+}

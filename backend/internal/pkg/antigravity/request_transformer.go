@@ -307,6 +307,12 @@ func filterOpenCodePrompt(text string) string {
 var claudeIdentityOpeners = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are a Claude agent, built on Anthropic'?s Claude Agent SDK\.?`),
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Claude Code, Anthropic'?s official CLI for Claude\.?`),
+	// Hermes Agent opens its system prompt with "You are Hermes Agent, an intelligent AI
+	// assistant created by Nous Research." Sent as-is, Google answers every account with
+	// 429 RESOURCE_EXHAUSTED (verified: that sentence alone reproduces it, while the same
+	// request with only this sentence rewritten succeeds). Only the first sentence is
+	// matched so a reworded tail keeps working and the rest of the prompt is preserved.
+	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Hermes Agent\b[^.\r\n]*\.?`),
 }
 
 // neutralizeClaudeIdentity rewrites a leading vendor identity sentence into a
