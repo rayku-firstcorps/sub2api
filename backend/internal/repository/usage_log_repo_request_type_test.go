@@ -105,6 +105,8 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			log.RequestContextTruncated,
 			sqlmock.AnyArg(), // request_context_bytes
 			log.NativeCompactionV2,
+			log.CacheCreation30mTokens,
+			log.CacheCreation12hTokens,
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -203,6 +205,8 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			log.RequestContextTruncated,
 			sqlmock.AnyArg(), // request_context_bytes
 			log.NativeCompactionV2,
+			log.CacheCreation30mTokens,
+			log.CacheCreation12hTokens,
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -266,6 +270,30 @@ func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+}
+
+func TestPrepareUsageLogInsert_PersistsNativeCompactionV2WithoutChangingRequestType(t *testing.T) {
+	log := &service.UsageLog{
+		UserID:             1,
+		APIKeyID:           2,
+		AccountID:          3,
+		RequestID:          "req-native-compaction-v2",
+		Model:              "gpt-5",
+		RequestedModel:     "gpt-5",
+		RequestType:        service.RequestTypeStream,
+		NativeCompactionV2: true,
+		CreatedAt:          time.Date(2025, 1, 5, 13, 0, 0, 0, time.UTC),
+	}
+
+	prepared := prepareUsageLogInsert(log)
+
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-4])
+	require.Equal(t, true, prepared.args[len(prepared.args)-4])
+	require.Equal(t, int16(service.RequestTypeStream), prepared.args[30])
+	require.Equal(t, service.RequestTypeStream, log.RequestType)
+	require.True(t, log.Stream)
+	require.False(t, log.OpenAIWSMode)
 }
 
 func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
@@ -857,6 +885,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			false,
 			sql.NullInt64{},
 			false, // native_compaction_v2
+			0,     // cache_creation_30m_tokens
+			0,     // cache_creation_12h_tokens
 			now,
 		}})
 		require.NoError(t, err)
@@ -940,6 +970,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			false,             // request_context_truncated
 			sql.NullInt64{},   // request_context_bytes
 			false,             // native_compaction_v2
+			0,                 // cache_creation_30m_tokens
+			0,                 // cache_creation_12h_tokens
 			now,
 		}})
 		require.NoError(t, err)
@@ -1005,7 +1037,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // request_context_json
 			false,             // request_context_truncated
 			sql.NullInt64{},   // request_context_bytes
-			false,             // native_compaction_v2
+			true,              // native_compaction_v2
+			0,                 // cache_creation_30m_tokens
+			0,                 // cache_creation_12h_tokens
 			now,
 		}})
 		require.NoError(t, err)
@@ -1072,6 +1106,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			false,             // request_context_truncated
 			sql.NullInt64{},   // request_context_bytes
 			false,             // native_compaction_v2
+			0,                 // cache_creation_30m_tokens
+			0,                 // cache_creation_12h_tokens
 			now,
 		}})
 		require.NoError(t, err)
